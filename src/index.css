@@ -1,0 +1,759 @@
+/* All theme colors blue – overrides Bootstrap/Minible semantic colors */
+:root {
+  --bs-primary: #0a4251;
+  --bs-primary-rgb: 10, 66, 81;
+  --bs-secondary: #0a4251;
+  --bs-secondary-rgb: 10, 66, 81;
+  --bs-success: #0a4251;
+  --bs-success-rgb: 10, 66, 81;
+  --bs-info: #0a4251;
+  --bs-info-rgb: 10, 66, 81;
+  --bs-warning: #0a4251;
+  --bs-warning-rgb: 10, 66, 81;
+  --bs-danger: #0a4251;
+  --bs-danger-rgb: 10, 66, 81;
+  --bs-blue: #0a4251;
+  --bs-indigo: #0a4251;
+}
+
+:root {
+  color: #495057;
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  padding: 0;
+}
+
+/* Hide scrollbar on login page (scrolling still works) */
+body.ta-login-page-active {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+body.ta-login-page-active::-webkit-scrollbar {
+  display: none;
+}
+
+.ta-login-page {
+  background:
+    radial-gradient(circle at top left, rgba(10, 66, 81, 0.18), transparent 30%),
+    linear-gradient(135deg, #f4f7ff 0%, #eef2ff 100%);
+  min-height: 100vh;
+}
+
+.ta-login-card {
+  border-radius: 1.25rem;
+  overflow: hidden;
+}
+
+.ta-login-hero {
+  background: linear-gradient(135deg, #0a4251 0%, #0a4251 100%);
+  border-radius: 1.25rem 0 0 1.25rem;
+  color: #fff;
+}
+
+.ta-login-card .col-lg-6.bg-white {
+  border-radius: 0 1.25rem 1.25rem 0;
+}
+
+.ta-login-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  height: 100%;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.ta-login-brand {
+  align-items: flex-start;
+  display: flex;
+  font-size: 1rem;
+  font-weight: 700;
+  gap: 0.75rem;
+  width: 100%;
+  background: transparent;
+  padding: 0;
+}
+
+.ta-login-title {
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.ta-login-copy {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 1rem;
+  margin: 0;
+  max-width: 32rem;
+}
+
+.ta-login-feature-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ta-login-feature {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.ta-login-form-panel {
+  padding: 3rem;
+}
+
+.ta-login-input {
+  min-height: 46px;
+}
+
+a {
+  text-decoration: none;
+}
+
+.logo-txt {
+  color: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Brand logo (Dreamcatcherz) – header and login; no background on container or image */
+.ta-brand-logo,
+.ta-login-logo {
+  background: transparent !important;
+}
+.ta-brand-logo {
+  display: block;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.ta-brand-logo-sm {
+  max-height: 40px;
+}
+
+.ta-brand-logo-lg {
+  max-height: 48px;
+}
+
+/* Header: logo and profile same height and alignment, tight logo space */
+#page-topbar {
+  padding-top: 0;
+}
+
+#page-topbar .navbar-header {
+  align-items: center;
+  height: 70px;
+  min-height: 70px;
+  padding-top: 0;
+}
+
+.ta-topbar-logo {
+  align-items: flex-start;
+  display: flex;
+  height: 70px;
+  padding-left: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+#page-topbar .navbar-brand-box {
+  align-items: flex-start;
+  display: flex !important;
+  height: 100%;
+}
+
+#page-topbar .navbar-brand-box .logo.logo-light {
+  align-items: flex-start;
+  display: flex !important;
+  height: 100%;
+}
+
+/* Show only one logo (hide logo-sm so logo-lg is the only one visible) */
+#page-topbar .navbar-brand-box .logo.logo-light .logo-sm {
+  display: none !important;
+}
+
+#page-topbar .navbar-brand-box .logo.logo-light .logo-lg {
+  align-items: center;
+  background: transparent;
+  display: inline-flex !important;
+  line-height: 0;
+  padding: 0;
+  vertical-align: top;
+}
+
+#page-topbar .navbar-brand-box .ta-brand-logo {
+  display: block;
+  height: auto;
+  max-height: 70px;
+  object-fit: contain;
+  vertical-align: top;
+  width: auto;
+}
+
+.ta-login-logo {
+  border-radius: 0.5rem;
+  display: block;
+  height: auto;
+  object-fit: contain;
+  width: 100%;
+  background: transparent !important;
+}
+
+/* Header: profile right – vertically centered like logo */
+.ta-topbar-actions {
+  align-items: center;
+  display: flex;
+  height: 70px;
+  margin-left: 1rem;
+  padding-right: calc(1.25rem / 2);
+}
+
+.ta-topbar-user {
+  color: #fff;
+}
+
+.ta-topbar-subtext {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ta-profile-dropdown {
+  position: relative;
+}
+
+.ta-profile-button {
+  align-items: center;
+  color: #fff;
+  display: inline-flex;
+  overflow: visible;
+  padding: 0 0.5rem 0 0;
+}
+
+.ta-profile-button:hover,
+.ta-profile-button:focus {
+  color: #fff;
+}
+
+.ta-profile-name {
+  color: #fff;
+}
+
+.ta-profile-image {
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  height: 36px;
+  object-fit: cover;
+  width: 36px;
+}
+
+.ta-profile-arrow {
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+  border-right: 1.8px solid currentColor;
+  border-bottom: 1.8px solid currentColor;
+  color: #fff;
+  line-height: 1;
+  margin-right: 0.15rem;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 0.2s ease;
+}
+
+.ta-profile-arrow.open {
+  transform: rotate(225deg) translateY(1px);
+}
+
+.ta-menu-arrow {
+  display: inline-block;
+  height: 6px;
+  width: 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  line-height: 1;
+  margin-left: 0.45rem;
+  opacity: 0.8;
+  transform: rotate(45deg) translateY(-1px);
+  vertical-align: middle;
+}
+
+.ta-menu-arrow.open {
+  transform: rotate(225deg) translateY(1px);
+}
+
+.topnav .navbar-nav .nav-link {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.topnav .navbar-nav .nav-link.active,
+.topnav .ta-nav-dropdown-toggle.active {
+  color: var(--bs-primary) !important;
+}
+
+.topnav .navbar-nav .nav-link.active .ta-menu-icon,
+.topnav .ta-nav-dropdown-toggle.active .ta-menu-icon {
+  color: var(--bs-primary) !important;
+}
+
+.topnav .navbar-nav .nav-link:hover,
+.topnav .navbar-nav .nav-link:focus,
+.topnav .ta-nav-dropdown-toggle:hover,
+.topnav .ta-nav-dropdown-toggle:focus {
+  color: var(--bs-primary) !important;
+}
+
+.topnav .navbar-nav .nav-link:hover .ta-menu-icon,
+.topnav .navbar-nav .nav-link:focus .ta-menu-icon,
+.topnav .ta-nav-dropdown-toggle:hover .ta-menu-icon,
+.topnav .ta-nav-dropdown-toggle:focus .ta-menu-icon {
+  color: var(--bs-primary) !important;
+}
+
+.ta-nav-dropdown {
+  position: relative;
+}
+
+.ta-nav-dropdown-toggle {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+/* Top navigation – keep layout, only adjust text colors */
+
+.ta-nav-dropdown-menu {
+  margin-top: 0.5rem;
+  min-width: 220px;
+}
+
+.ta-nav-dropdown-menu.show {
+  display: block;
+}
+
+.ta-submenu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Submenu (dropdown) items – match primary color on hover/active */
+.topnav .dropdown-menu .dropdown-item {
+  color: #495057;
+}
+
+.topnav .dropdown-menu .dropdown-item:hover,
+.topnav .dropdown-menu .dropdown-item:focus,
+.topnav .dropdown-menu .dropdown-item.active {
+  color: var(--bs-primary) !important;
+  background-color: rgba(10, 66, 81, 0.06);
+}
+
+.ta-menu-icon {
+  align-items: center;
+  display: inline-flex;
+  height: 16px;
+  justify-content: center;
+  margin-right: 0.35rem;
+  width: 16px;
+}
+
+.ta-menu-icon svg {
+  fill: none;
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 16px;
+}
+
+.ta-profile-menu {
+  min-width: 220px;
+}
+
+.ta-profile-menu .dropdown-item {
+  background: transparent;
+  border: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.ta-avatar-circle {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 700;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.ta-profile-avatar-lg {
+  align-items: center;
+  background: linear-gradient(135deg, #0a4251, #0f6b7e);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-size: 1.25rem;
+  font-weight: 700;
+  height: 64px;
+  justify-content: center;
+  width: 64px;
+}
+
+.ta-profile-avatar-photo {
+  border: 3px solid rgba(10, 66, 81, 0.2);
+  object-fit: cover;
+}
+
+.ta-profile-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.topnav .navbar-nav .nav-link.active {
+  color: var(--bs-primary);
+  font-weight: 600;
+}
+
+.ta-card-muted {
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.ta-stat-label {
+  color: #6c757d;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.ta-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.ta-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ta-empty {
+  color: #6c757d;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.ta-table-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ta-loading {
+  align-items: center;
+  color: #6c757d;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.ta-status-badge {
+  text-transform: capitalize;
+}
+
+.ta-user-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ta-auth-shell {
+  align-items: center;
+  background: #f8f8fb;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.ta-checkbox-grid {
+  border: 1px solid #e9ecef;
+  border-radius: 0.375rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  padding: 1rem;
+}
+
+.ta-checkbox-item {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+}
+
+.ta-checkbox-input {
+  accent-color: var(--bs-primary);
+  flex: 0 0 auto;
+  height: 1rem;
+  margin: 0.1rem 0 0;
+  width: 1rem;
+}
+
+.ta-checkbox-item span {
+  color: #495057;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.ta-modal .modal-body .row {
+  --bs-gutter-x: 1rem;
+  --bs-gutter-y: 1rem;
+}
+
+.ta-modal .modal-body .form-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.ta-modal .modal-body .form-control,
+.ta-modal .modal-body .form-select {
+  min-height: 38px;
+  width: 100%;
+}
+
+.table > :not(caption) > * > * {
+  vertical-align: middle;
+}
+
+.footer {
+  bottom: 0;
+  left: 0;
+  padding: 20px calc(24px / 2);
+  position: relative;
+  right: 0;
+}
+
+.ta-modal {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+/* Scrollable modal body – keeps popup height under control */
+.ta-modal .modal-body.ta-modal-body-scroll {
+  max-height: min(65vh, 420px);
+  overflow-y: auto;
+}
+
+/* Compact checkbox grid for long lists (e.g. permissions) – 2 columns, smaller text */
+.ta-checkbox-grid-compact {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.ta-checkbox-grid-compact .ta-checkbox-item {
+  padding: 0.5rem 0.625rem;
+}
+
+.ta-checkbox-grid-compact .ta-checkbox-item span {
+  font-size: 0.8125rem;
+}
+
+/* Permission groups in Role modal */
+.ta-permission-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ta-permission-group {
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+}
+
+.ta-permission-group-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+.ta-permission-group .ta-checkbox-grid {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.ta-permission-group-toggle-btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid #ced4da;
+  border-radius: 999px;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  padding: 0 0.4rem;
+}
+
+.ta-permission-group-toggle-btn:hover {
+  background-color: rgba(10, 66, 81, 0.04);
+  border-color: #0a4251;
+}
+
+.ta-permission-group-icon {
+  fill: none;
+  height: 14px;
+  stroke: #0a4251;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+  width: 14px;
+}
+
+/* Header background – match primary teal */
+#page-topbar {
+  background-color: #0a4251 !important;
+}
+
+/* Force all key Bootstrap semantic variants to use the primary teal */
+.btn-primary,
+.btn-success,
+.btn-info,
+.btn-warning,
+.btn-danger {
+  background-color: #0a4251 !important;
+  border-color: #0a4251 !important;
+}
+
+.btn-primary:hover,
+.btn-success:hover,
+.btn-info:hover,
+.btn-warning:hover,
+.btn-danger:hover {
+  background-color: #06303a !important;
+  border-color: #06303a !important;
+}
+
+.badge.bg-primary,
+.badge.bg-success,
+.badge.bg-info,
+.badge.bg-warning,
+.badge.bg-danger {
+  background-color: #0a4251 !important;
+}
+
+.text-primary,
+.text-success,
+.text-info,
+.text-warning,
+.text-danger {
+  color: #0a4251 !important;
+}
+
+.bg-primary,
+.bg-success,
+.bg-info,
+.bg-warning,
+.bg-danger {
+  background-color: #0a4251 !important;
+}
+
+/* Icon-only action buttons used in tables */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  width: 28px;
+  height: 28px;
+}
+
+.ta-action-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+@media (max-width: 991.98px) {
+  .ta-login-hero {
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
+  .ta-login-card .col-lg-6.bg-white {
+    border-radius: 0 0 1.25rem 1.25rem;
+  }
+
+  .ta-login-hero-content,
+  .ta-login-form-panel {
+    padding: 2rem;
+  }
+
+  .ta-login-title {
+    font-size: 1.65rem;
+  }
+
+  .ta-topbar-actions {
+    gap: 0.75rem !important;
+  }
+
+  .ta-topbar-user {
+    display: none;
+  }
+
+  .ta-submenu {
+    gap: 0.5rem;
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+}
