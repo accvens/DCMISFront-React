@@ -21,7 +21,7 @@ function createEmptyPaymentModeForm() {
 
 function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,10 @@ function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDe
     setLoading(true);
     setError("");
 
-    apiRequest(`/masters/payment-modes?page=${page}&page_size=${pageSize}`, { token })
+    apiRequest(
+      `/masters/payment-modes?page=${page}&page_size=${pageSize}`,
+      { token },
+    )
       .then((response) => {
         if (!active) {
           return;
@@ -187,6 +190,7 @@ function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDe
                   {!canUpdate && !canDelete ? "-" : null}
                 </div>,
               ])}
+              sortable
               emptyMessage="No payment modes found."
             />
             <PaginationBar

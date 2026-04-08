@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertMessage,
   CardLoader,
@@ -12,18 +13,33 @@ import {
   BookingFormModal,
   StatusBadge,
   buildBookingPayload,
-  createBookingFormFromBooking,
   createDefaultBookingForm,
   createEmptyBookingForm,
   createMap,
+  emptyTravelerLine,
   formatCurrency,
   formatDate,
+  patchLine,
   validateBookingForm,
 } from "./BookingsShared.jsx";
+import { useBookingCatalogCreateModals } from "./useBookingCatalogCreateModals.jsx";
+import { useBookingReferenceCreateModals } from "./useBookingReferenceCreateModals.jsx";
+import { mergeUniqueById } from "../customers/CustomersShared.jsx";
 
-function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
+function BookingsListPage({
+  token,
+  apiRequest,
+  bookingStatusOptions,
+  canCreateCustomer,
+  canCreateDestination,
+  canCreateTraveler,
+  canCreateProductType = false,
+  canCreateCatalogProduct = false,
+  canCreateVendor = false,
+}) {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,6 +56,8 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
     travelers: [],
     products: [],
     vendors: [],
+    productTypes: [],
+    paymentModes: [],
   });
 
   useEffect(() => {
@@ -57,26 +75,43 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
       apiRequest("/travelers?page=1&page_size=100", { token }),
       apiRequest("/masters/products?page=1&page_size=100", { token }),
       apiRequest("/masters/vendors?page=1&page_size=100", { token }),
+      apiRequest("/masters/product-types?page=1&page_size=100", { token }),
+      apiRequest("/masters/payment-modes?page=1&page_size=100", { token }).catch(() => ({
+        items: [],
+      })),
     ])
-      .then(([bookingsPage, customers, destinations, travelers, products, vendors]) => {
-        if (!active) {
-          return;
-        }
-        const nextState = {
-          loading: false,
-          error: "",
+      .then(
+        ([
           bookingsPage,
-          customers: customers.items,
-          destinations: destinations.items,
-          travelers: travelers.items,
-          products: products.items,
-          vendors: vendors.items,
-        };
-        setState(nextState);
-        setForm((current) =>
-          current.customer_id ? current : createDefaultBookingForm(nextState),
-        );
-      })
+          customers,
+          destinations,
+          travelers,
+          products,
+          vendors,
+          productTypes,
+          paymentModes,
+        ]) => {
+          if (!active) {
+            return;
+          }
+          const nextState = {
+            loading: false,
+            error: "",
+            bookingsPage,
+            customers: customers.items,
+            destinations: destinations.items,
+            travelers: travelers.items,
+            products: products.items,
+            vendors: vendors.items,
+            productTypes: productTypes.items,
+            paymentModes: paymentModes.items || [],
+          };
+          setState(nextState);
+          setForm((current) =>
+            current.customer_id ? current : createDefaultBookingForm(nextState),
+          );
+        },
+      )
       .catch((requestError) => {
         if (!active) {
           return;
@@ -93,6 +128,65 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
     };
   }, [apiRequest, page, pageSize, refreshKey, token]);
 
+  const {
+    renderModals,
+    customerAutocompleteExtras,
+    destinationAutocompleteExtras,
+    travelerAutocompleteExtrasForRow,
+  } = useBookingReferenceCreateModals({
+    token,
+    apiRequest,
+    canCreateCustomer,
+    canCreateDestination,
+    canCreateTraveler,
+    customers: state.customers,
+    setCustomers: (fn) => setState((s) => ({ ...s, customers: fn(s.customers) })),
+    destinations: state.destinations,
+    setDestinations: (fn) => setState((s) => ({ ...s, destinations: fn(s.destinations) })),
+    travelers: state.travelers,
+    setTravelers: (fn) => setState((s) => ({ ...s, travelers: fn(s.travelers) })),
+    selectedCustomerId: form.customer_id,
+    onCustomerCreated: (c) => {
+      setForm((current) => ({
+        ...current,
+        customer_id: String(c.id),
+        travelerLines: patchLine(
+          current.travelerLines?.length ? current.travelerLines : [emptyTravelerLine()],
+          0,
+          { traveler_id: "" },
+        ),
+      }));
+    },
+    onDestinationCreated: (d) => {
+      setForm((current) => ({ ...current, destination_id: String(d.id) }));
+    },
+    onTravelerCreated: (t, rowIndex) => {
+      const idx = rowIndex ?? 0;
+      setForm((current) => ({
+        ...current,
+        travelerLines: patchLine(
+          current.travelerLines?.length ? current.travelerLines : [emptyTravelerLine()],
+          idx,
+          { traveler_id: String(t.id) },
+        ),
+      }));
+    },
+  });
+
+  const { renderCatalogModals, catalogMasterToolbar } = useBookingCatalogCreateModals({
+    token,
+    apiRequest,
+    destinationId: form.destination_id,
+    productTypes: state.productTypes,
+    setProductTypes: (fn) => setState((s) => ({ ...s, productTypes: fn(s.productTypes) })),
+    vendors: state.vendors,
+    setVendors: (fn) => setState((s) => ({ ...s, vendors: fn(s.vendors) })),
+    setProducts: (fn) => setState((s) => ({ ...s, products: fn(s.products) })),
+    canCreateProductType,
+    canCreateCatalogProduct,
+    canCreateVendor,
+  });
+
   const customerMap = useMemo(() => createMap(state.customers, "id"), [state.customers]);
   const destinationMap = useMemo(
     () => createMap(state.destinations, "id"),
@@ -108,11 +202,10 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
-      await apiRequest(form.id ? `/bookings/${form.id}` : "/bookings", {
-        method: form.id ? "PATCH" : "POST",
+      await apiRequest("/bookings", {
+        method: "POST",
         token,
         body: buildBookingPayload(form),
       });
@@ -121,10 +214,8 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
       setPage(1);
       setRefreshKey((current) => current + 1);
       setSuccessModal({
-        title: isEditing ? "Booking Updated" : "Booking Created",
-        message: isEditing
-          ? "Booking updated successfully."
-          : "Booking created successfully.",
+        title: "Booking Created",
+        message: "Booking created successfully.",
       });
     } catch (requestError) {
       setFormError(requestError.message || "Unable to save booking.");
@@ -189,18 +280,20 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
                 destinationMap[booking.destination_id]?.destination_name ||
                   `Destination #${booking.destination_id}`,
                 formatDate(booking.travel_start_date),
-                <StatusBadge key={`booking-status-${booking.id}`} status={booking.status} />,
-                formatCurrency(booking.total_amount),
+                <StatusBadge
+                  key={`booking-status-${booking.id}`}
+                  status={booking.status}
+                  data-sort={booking.status || ""}
+                />,
+                <span key={`booking-total-${booking.id}`} data-sort={String(booking.total_amount ?? "")}>
+                  {formatCurrency(booking.total_amount)}
+                </span>,
                 <div key={`booking-actions-${booking.id}`} className="ta-table-actions">
                   <button
                     type="button"
                     className="btn btn-icon btn-soft-primary btn-sm"
                     aria-label="Edit booking"
-                    onClick={() => {
-                      setForm(createBookingFormFromBooking(booking));
-                      setFormError("");
-                      setModalOpen(true);
-                    }}
+                    onClick={() => navigate(`/bookings/edit/${booking.id}`)}
                   >
                     <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
                       <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
@@ -227,6 +320,7 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
                   </button>
                 </div>,
               ])}
+              sortable
               emptyMessage="No bookings found."
             />
             <PaginationBar
@@ -243,8 +337,8 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
       </ManageCard>
       <BookingFormModal
         open={modalOpen}
-        title={form.id ? "Update Booking" : "Add Booking"}
-        saveLabel={form.id ? "Update Booking" : "Create Booking"}
+        title="Add Booking"
+        saveLabel="Create Booking"
         saving={saving}
         onCancel={() => {
           setModalOpen(false);
@@ -257,7 +351,21 @@ function BookingsListPage({ token, apiRequest, bookingStatusOptions }) {
         setForm={setForm}
         state={state}
         bookingStatusOptions={bookingStatusOptions}
+        customerAutocompleteExtras={customerAutocompleteExtras}
+        destinationAutocompleteExtras={destinationAutocompleteExtras}
+        travelerAutocompleteExtras={travelerAutocompleteExtrasForRow(0)}
+        catalogToolbar={catalogMasterToolbar}
+        apiRequest={apiRequest}
+        token={token}
+        mergeCustomersIntoState={(items) =>
+          setState((s) => ({ ...s, customers: mergeUniqueById(s.customers, items) }))
+        }
+        mergeTravelersIntoState={(items) =>
+          setState((s) => ({ ...s, travelers: mergeUniqueById(s.travelers, items) }))
+        }
       />
+      {renderModals()}
+      {renderCatalogModals()}
       <ConfirmDeleteModal
         open={Boolean(deleteTarget)}
         title="Delete Booking"

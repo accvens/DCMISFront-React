@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertMessage,
+  AutocompleteField,
   CardLoader,
   ConfirmDeleteModal,
   FormModal,
+  ListSearchInput,
   ManageCard,
   PaginationBar,
-  SelectField,
   SimpleTable,
   SuccessModal,
   TextField,
   formatDateTime,
+  useDebouncedValue,
 } from "../access/AccessShared.jsx";
+import {
+  buildPagedSearchUrl,
+  CustomerAutocomplete,
+  TravelerAutocomplete,
+} from "./CustomersShared.jsx";
 
 function createEmptyPassportForm() {
   return {
     id: "",
+    customer_id: "",
     traveler_id: "",
     passport_number: "",
-    issue_country: "",
+    issue_country_id: "",
     issue_date: "",
     expiry_date: "",
     place_of_issue: "",
@@ -37,19 +45,29 @@ function validatePassportForm(form) {
 
 function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pageData, setPageData] = useState(null);
   const [travelers, setTravelers] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState(createEmptyPassportForm());
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
+  const [countries, setCountries] = useState([]);
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput, 400);
+
+  const countryOptions = useMemo(
+    () => [
+      { value: "", label: "—" },
+      ...countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
+    ],
+    [countries],
+  );
 
   useEffect(() => {
     document.title = "Passport Details | Travel Agency";
@@ -57,20 +75,41 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
 
   useEffect(() => {
     let active = true;
+    apiRequest("/masters/countries/options", { token })
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        setCountries(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) {
+          setCountries([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiRequest, token]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchInput]);
+
+  useEffect(() => {
+    let active = true;
     setLoading(true);
     setError("");
 
     Promise.all([
-      apiRequest(`/passports?page=${page}&page_size=${pageSize}`, { token }),
+      apiRequest(buildPagedSearchUrl("/passports", page, pageSize, debouncedSearch), { token }),
       // Backend pagination validates page_size <= 100
       apiRequest("/travelers?page=1&page_size=100", { token }),
-      apiRequest("/customers?page=1&page_size=100", { token }),
     ])
-      .then(([passportsResponse, travelersResponse, customersResponse]) => {
+      .then(([passportsResponse, travelersResponse]) => {
         if (!active) return;
         setPageData(passportsResponse);
         setTravelers(travelersResponse.items || []);
-        setCustomers(customersResponse.items || []);
         setLoading(false);
       })
       .catch((requestError) => {
@@ -82,21 +121,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, refreshKey, token]);
-
-  const travelerOptions = useMemo(() => {
-    const customerById = new Map(customers.map((c) => [String(c.id), c]));
-    return travelers.map((t) => {
-      const customer = customerById.get(String(t.customer_id));
-      const customerLabel = customer
-        ? [customer.first_name, customer.last_name].filter(Boolean).join(" ") || customer.customer_id
-        : `Customer #${t.customer_id}`;
-      return {
-        value: String(t.id),
-        label: `${[t.first_name, t.last_name].filter(Boolean).join(" ") || `Traveler #${t.id}`} — ${customerLabel}`,
-      };
-    });
-  }, [customers, travelers]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
 
   function resolveTravelerLabel(travelerId) {
     const t = travelers.find((item) => String(item.id) === String(travelerId));
@@ -122,7 +147,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
         body: {
           traveler_id: Number(form.traveler_id),
           passport_number: form.passport_number.trim(),
-          issue_country: form.issue_country.trim() || null,
+          issue_country_id: form.issue_country_id ? Number(form.issue_country_id) : null,
           issue_date: form.issue_date || null,
           expiry_date: form.expiry_date || null,
           place_of_issue: form.place_of_issue.trim() || null,
@@ -162,14 +187,19 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
       <ManageCard
         title="Passport Details"
         subtitle="Create and maintain passport details linked to travelers."
+        toolbarExtra={
+          <ListSearchInput
+            id="passports-list-search"
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Search traveler, customer, passport number, country..."
+          />
+        }
         actionLabel={canCreate ? "Add Passport" : undefined}
         onAction={
           canCreate
             ? () => {
-                setForm({
-                  ...createEmptyPassportForm(),
-                  traveler_id: travelerOptions[0]?.value || "",
-                });
+                setForm(createEmptyPassportForm());
                 setFormError("");
                 setModalOpen(true);
               }
@@ -208,17 +238,33 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
                       className="btn btn-icon btn-soft-primary btn-sm"
                       aria-label="Edit passport"
                       onClick={() => {
-                        setForm({
-                          id: String(item.id),
-                          traveler_id: String(item.traveler_id || ""),
-                          passport_number: item.passport_number || "",
-                          issue_country: item.issue_country || "",
-                          issue_date: item.issue_date || "",
-                          expiry_date: item.expiry_date || "",
-                          place_of_issue: item.place_of_issue || "",
-                        });
-                        setFormError("");
-                        setModalOpen(true);
+                        const t = travelers.find((tr) => String(tr.id) === String(item.traveler_id));
+                        const open = (customerId) => {
+                          setForm({
+                            id: String(item.id),
+                            customer_id: customerId,
+                            traveler_id: String(item.traveler_id || ""),
+                            passport_number: item.passport_number || "",
+                            issue_country_id:
+                              item.issue_country_id != null ? String(item.issue_country_id) : "",
+                            issue_date: item.issue_date || "",
+                            expiry_date: item.expiry_date || "",
+                            place_of_issue: item.place_of_issue || "",
+                          });
+                          setFormError("");
+                          setModalOpen(true);
+                        };
+                        if (t) {
+                          open(String(t.customer_id || ""));
+                          return;
+                        }
+                        apiRequest(`/travelers/${item.traveler_id}`, { token })
+                          .then((trow) => {
+                            open(trow?.customer_id != null ? String(trow.customer_id) : "");
+                          })
+                          .catch(() => {
+                            open("");
+                          });
                       }}
                     >
                       <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
@@ -250,6 +296,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
                   {!canUpdate && !canDelete ? "-" : null}
                 </div>,
               ])}
+              sortable
               emptyMessage="No passport details found."
             />
             <PaginationBar
@@ -280,12 +327,30 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
       >
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
-          <SelectField
+          <CustomerAutocomplete
+            label="Customer"
+            value={form.customer_id}
+            required
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                customer_id: value,
+                traveler_id: String(value) === String(current.customer_id) ? current.traveler_id : "",
+              }))
+            }
+            apiRequest={apiRequest}
+            token={token}
+          />
+          <TravelerAutocomplete
             label="Traveler"
             value={form.traveler_id}
             required
+            disabled={!String(form.customer_id || "").trim()}
+            placeholder={String(form.customer_id || "").trim() ? undefined : "Select a customer first"}
+            customerIdFilter={form.customer_id}
             onChange={(value) => setForm((current) => ({ ...current, traveler_id: value }))}
-            options={travelerOptions}
+            apiRequest={apiRequest}
+            token={token}
           />
           <TextField
             label="Passport Number"
@@ -293,10 +358,12 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
             required
             onChange={(value) => setForm((current) => ({ ...current, passport_number: value }))}
           />
-          <TextField
+          <AutocompleteField
             label="Issue Country"
-            value={form.issue_country}
-            onChange={(value) => setForm((current) => ({ ...current, issue_country: value }))}
+            value={form.issue_country_id}
+            placeholder="Type to search countries…"
+            onChange={(value) => setForm((current) => ({ ...current, issue_country_id: value }))}
+            options={countryOptions}
           />
           <TextField
             label="Issue Date"

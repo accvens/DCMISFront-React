@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { AlertMessage, CardLoader } from "../access/AccessShared.jsx";
 import {
   buildBookingPayload,
-  createDefaultBookingForm,
-  createEmptyBookingForm,
+  createBookingFormFromBooking,
   validateBookingForm,
 } from "./BookingsShared.jsx";
 import { BookingEditorChrome } from "./BookingEditorChrome.jsx";
 import OrderEntryBookingForm, { BOOKING_WIZARD_LAST_STEP_INDEX } from "./OrderEntryBookingForm.jsx";
 
-function CreateBookingPage({
+function EditBookingPage({
   token,
   apiRequest,
   bookingStatusOptions,
@@ -22,9 +21,11 @@ function CreateBookingPage({
   canCreateVendor = false,
 }) {
   const navigate = useNavigate();
+  const { bookingId } = useParams();
   const [state, setState] = useState({
     loading: true,
     error: "",
+    booking: null,
     customers: [],
     destinations: [],
     travelers: [],
@@ -33,23 +34,28 @@ function CreateBookingPage({
     productTypes: [],
     paymentModes: [],
   });
-  const [form, setForm] = useState(createEmptyBookingForm());
+  const [form, setForm] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  /** Remount order-entry form after save so the wizard returns to step 1. */
-  const [formEditorKey, setFormEditorKey] = useState(0);
   const [wizardStep, setWizardStep] = useState(0);
 
   useEffect(() => {
-    document.title = "Create Booking | Travel Agency";
+    document.title = "Edit Booking | Travel Agency";
   }, []);
 
   useEffect(() => {
     let active = true;
-    setState((current) => ({ ...current, loading: true, error: "" }));
+    const id = Number(bookingId);
+    if (!id) {
+      setState((s) => ({ ...s, loading: false, error: "Invalid booking id." }));
+      return;
+    }
+
+    setState((s) => ({ ...s, loading: true, error: "" }));
 
     Promise.all([
+      apiRequest(`/bookings/${id}`, { token }),
       apiRequest("/customers?page=1&page_size=100", { token }),
       apiRequest("/masters/destinations?page=1&page_size=100", { token }),
       apiRequest("/travelers?page=1&page_size=100", { token }),
@@ -58,13 +64,14 @@ function CreateBookingPage({
       apiRequest("/masters/product-types?page=1&page_size=100", { token }),
       apiRequest("/masters/payment-modes?page=1&page_size=100", { token }).catch(() => ({ items: [] })),
     ])
-      .then(([customers, destinations, travelers, products, vendors, productTypes, paymentModes]) => {
+      .then(([booking, customers, destinations, travelers, products, vendors, productTypes, paymentModes]) => {
         if (!active) {
           return;
         }
         const nextState = {
           loading: false,
           error: "",
+          booking,
           customers: customers.items,
           destinations: destinations.items,
           travelers: travelers.items,
@@ -74,25 +81,23 @@ function CreateBookingPage({
           paymentModes: paymentModes.items || [],
         };
         setState(nextState);
-        setForm((current) =>
-          current.customer_id ? current : createDefaultBookingForm(nextState),
-        );
+        setForm(createBookingFormFromBooking(booking, { catalogueProducts: products.items }));
       })
       .catch((requestError) => {
         if (!active) {
           return;
         }
-        setState((current) => ({
-          ...current,
+        setState((s) => ({
+          ...s,
           loading: false,
-          error: requestError.message || "Unable to load booking form data.",
+          error: requestError.message || "Unable to load booking.",
         }));
       });
 
     return () => {
       active = false;
     };
-  }, [apiRequest, token]);
+  }, [apiRequest, bookingId, token]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -104,42 +109,60 @@ function CreateBookingPage({
       return;
     }
     setSubmitting(true);
+    const id = Number(bookingId);
 
     try {
-      await apiRequest("/bookings", {
-        method: "POST",
+      const updated = await apiRequest(`/bookings/${id}`, {
+        method: "PATCH",
         token,
         body: buildBookingPayload(form),
       });
+      setState((s) => ({ ...s, booking: updated }));
       if (wizardStep === BOOKING_WIZARD_LAST_STEP_INDEX) {
         navigate("/bookings/list");
         return;
       }
-      setForm(createDefaultBookingForm(state));
-      setSuccessMessage("Booking saved. You can create another or keep editing.");
-      setFormEditorKey((k) => k + 1);
+      setSuccessMessage("Booking updated successfully.");
     } catch (requestError) {
-      setFormError(requestError.message || "Unable to save booking.");
+      setFormError(requestError.message || "Unable to update booking.");
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (state.error && !state.booking) {
+    return (
+      <div className="ta-booking-editor ta-booking-editor--error">
+        <div className="ta-booking-editor__container py-5">
+          <div className="card border-0 shadow-sm ta-booking-editor-error-card mx-auto">
+            <div className="card-body p-4 p-md-5 text-center">
+              <h1 className="h5 mb-3">Unable to load booking</h1>
+              <AlertMessage message={state.error} variant="danger" />
+              <NavLink to="/bookings/list" className="btn ta-booking-editor-actions__submit mt-3">
+                Back to bookings list
+              </NavLink>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      {state.loading ? (
+      {state.loading || !form ? (
         <div className="ta-booking-editor ta-booking-editor--loading">
-          <CardLoader message="Preparing booking workspace…" />
+          <CardLoader message="Loading booking…" />
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="ta-booking-editor-form">
-          <BookingEditorChrome mode="create">
+          <BookingEditorChrome mode="edit" bookingId={bookingId}>
             <AlertMessage message={state.error} variant="danger" />
             <AlertMessage id="ta-booking-form-validation-error" message={formError} variant="danger" />
             <AlertMessage message={successMessage} variant="success" />
             <OrderEntryBookingForm
-              key={formEditorKey}
-              mode="create"
+              mode="edit"
+              bookingId={bookingId}
               form={form}
               setForm={setForm}
               state={state}
@@ -160,8 +183,8 @@ function CreateBookingPage({
               setProductTypesList={(fn) => setState((s) => ({ ...s, productTypes: fn(s.productTypes) }))}
               paymentModes={state.paymentModes || []}
               submitting={submitting}
-              submitLabel="Save Booking"
-              savingLabel="Saving…"
+              submitLabel="Update booking"
+              savingLabel="Updating…"
               onWizardStepChange={setWizardStep}
               validationError={formError}
             />
@@ -172,4 +195,4 @@ function CreateBookingPage({
   );
 }
 
-export default CreateBookingPage;
+export default EditBookingPage;

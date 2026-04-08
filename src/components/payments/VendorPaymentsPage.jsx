@@ -22,7 +22,7 @@ import {
 
 function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [state, setState] = useState({
@@ -178,8 +178,14 @@ function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
                 bookingMap[payment.booking_id]?.drc_no || `Booking #${payment.booking_id}`,
                 vendorMap[payment.vendor_id]?.vendor_name || `Vendor #${payment.vendor_id}`,
                 payment.payment_method,
-                formatCurrency(payment.amount),
-                <StatusBadge key={`vendor-${payment.id}`} status={payment.status} />,
+                <span key={`vendor-amt-${payment.id}`} data-sort={String(payment.amount ?? "")}>
+                  {formatCurrency(payment.amount)}
+                </span>,
+                <StatusBadge
+                  key={`vendor-${payment.id}`}
+                  status={payment.status}
+                  data-sort={payment.status || ""}
+                />,
                 <div key={`vendor-payment-actions-${payment.id}`} className="ta-table-actions">
                   <button
                     type="button"
@@ -224,6 +230,7 @@ function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
                   </button>
                 </div>,
               ])}
+              sortable
               emptyMessage="No vendor payments found."
             />
             <PaginationBar

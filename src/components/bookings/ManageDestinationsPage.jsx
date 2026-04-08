@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertMessage,
   CardLoader,
@@ -17,7 +17,7 @@ function createEmptyDestinationForm() {
     id: "",
     destination_name: "",
     city: "",
-    country: "",
+    country_id: "",
     status: "Active",
   };
 }
@@ -36,7 +36,7 @@ function validateDestinationForm(form) {
 
 function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +47,15 @@ function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDe
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
+  const [countries, setCountries] = useState([]);
+
+  const countryOptions = useMemo(
+    () => [
+      { value: "", label: "—" },
+      ...countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
+    ],
+    [countries],
+  );
 
   useEffect(() => {
     document.title = "Manage Destination | Travel Agency";
@@ -54,10 +63,32 @@ function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDe
 
   useEffect(() => {
     let active = true;
+    apiRequest("/masters/countries/options", { token })
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        setCountries(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) {
+          setCountries([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiRequest, token]);
+
+  useEffect(() => {
+    let active = true;
     setLoading(true);
     setError("");
 
-    apiRequest(`/masters/destinations?page=${page}&page_size=${pageSize}`, { token })
+    apiRequest(
+      `/masters/destinations?page=${page}&page_size=${pageSize}`,
+      { token },
+    )
       .then((response) => {
         if (!active) {
           return;
@@ -98,7 +129,7 @@ function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDe
           body: {
             destination_name: form.destination_name.trim(),
             city: form.city.trim() || null,
-            country: form.country.trim() || null,
+            country_id: form.country_id ? Number(form.country_id) : null,
             status: form.status,
           },
         },
@@ -173,7 +204,7 @@ function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDe
                           id: String(item.id),
                           destination_name: item.destination_name || "",
                           city: item.city || "",
-                          country: item.country || "",
+                          country_id: item.country_id != null ? String(item.country_id) : "",
                           status: item.status || "Active",
                         });
                         setFormError("");
@@ -209,6 +240,7 @@ function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDe
                   {!canUpdate && !canDelete ? "-" : null}
                 </div>,
               ])}
+              sortable
               emptyMessage="No destinations found."
             />
             <PaginationBar
@@ -248,10 +280,11 @@ function ManageDestinationsPage({ token, apiRequest, canCreate, canUpdate, canDe
             value={form.city}
             onChange={(value) => setForm((current) => ({ ...current, city: value }))}
           />
-          <TextField
+          <SelectField
             label="Country"
-            value={form.country}
-            onChange={(value) => setForm((current) => ({ ...current, country: value }))}
+            value={form.country_id}
+            onChange={(value) => setForm((current) => ({ ...current, country_id: value }))}
+            options={countryOptions}
           />
           <SelectField
             label="Status"

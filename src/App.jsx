@@ -9,7 +9,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { formatDate } from "./components/access/AccessShared.jsx";
+import { AlertMessage, formatDate } from "./components/access/AccessShared.jsx";
 import ManagePermissionsPage from "./components/access/ManagePermissionsPage.jsx";
 import ManageRolesPage from "./components/access/ManageRolesPage.jsx";
 import ManageUsersPage from "./components/access/ManageUsersPage.jsx";
@@ -17,8 +17,10 @@ import UsersAccessLayout from "./components/access/UsersAccessLayout.jsx";
 import BookingsLayout from "./components/bookings/BookingsLayout.jsx";
 import BookingsListPage from "./components/bookings/BookingsListPage.jsx";
 import CreateBookingPage from "./components/bookings/CreateBookingPage.jsx";
+import EditBookingPage from "./components/bookings/EditBookingPage.jsx";
 import ManageDestinationsPage from "./components/bookings/ManageDestinationsPage.jsx";
 import ManagePaymentModesPage from "./components/bookings/ManagePaymentModesPage.jsx";
+import ManageProductDetailsPage from "./components/bookings/ManageProductDetailsPage.jsx";
 import ManageProductTypesPage from "./components/bookings/ManageProductTypesPage.jsx";
 import ManageTravelersPage from "./components/bookings/ManageTravelersPage.jsx";
 import CustomersLayout from "./components/customers/CustomersLayout.jsx";
@@ -28,14 +30,26 @@ import ManageVisaDetailsPage from "./components/customers/ManageVisaDetailsPage.
 import ManageTravelerDocumentsPage from "./components/customers/ManageTravelerDocumentsPage.jsx";
 import ManageTravelerPreferencesPage from "./components/customers/ManageTravelerPreferencesPage.jsx";
 import MastersLayout from "./components/masters/MastersLayout.jsx";
+import ManageLookupMasterPage from "./components/masters/ManageLookupMasterPage.jsx";
 import NotFoundPage from "./components/NotFoundPage.jsx";
 import CustomerPaymentsPage from "./components/payments/CustomerPaymentsPage.jsx";
 import PaymentsLayout from "./components/payments/PaymentsLayout.jsx";
 import VendorPaymentsPage from "./components/payments/VendorPaymentsPage.jsx";
 
-const API_BASE = normalizeApiBase(
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8006/api/v1",
-);
+function resolveApiBase() {
+  const fromEnv = import.meta.env.VITE_API_BASE_URL;
+  if (fromEnv) {
+    return normalizeApiBase(fromEnv);
+  }
+  // Dev + no env: same-origin /api/v1 via Vite proxy → FastAPI (see vite.config.js).
+  if (import.meta.env.DEV) {
+    return "/api/v1";
+  }
+  // Production build served without proxy: browser must call API host directly.
+  return "http://127.0.0.1:8000/api/v1";
+}
+
+const API_BASE = resolveApiBase();
 const API_ORIGIN = getApiOrigin(API_BASE);
 const TOKEN_KEY = "travel_agency_token";
 const USER_KEY = "travel_agency_user";
@@ -106,10 +120,20 @@ function getUserCapabilities(user) {
     destination.canAccess ||
     paymentMode.canAccess ||
     productType.canAccess;
+  const canCreateBooking =
+    isSuperAdmin ||
+    hasRole(user, BOOKING_AGENT_ROLE) ||
+    hasPermission(user, "create_booking");
   const canAccessPayments =
     isSuperAdmin || hasRole(user, ACCOUNTANT_ROLE) || hasPermission(user, "view_reports");
   const canAccessAccess =
     isSuperAdmin || hasPermission(user, "create_user") || hasPermission(user, "delete_user");
+  const canAccessMasters =
+    destination.canAccess ||
+    paymentMode.canAccess ||
+    productType.canAccess ||
+    traveler.canAccess ||
+    customer.canAccess;
 
   return {
     isSuperAdmin,
@@ -120,8 +144,10 @@ function getUserCapabilities(user) {
     productType,
     canAccessBookingsList,
     canAccessBookings,
+    canCreateBooking,
     canAccessPayments,
     canAccessAccess,
+    canAccessMasters,
   };
 }
 
@@ -265,6 +291,7 @@ function App() {
                   canCreate={capabilities.customer.create}
                   canUpdate={capabilities.customer.update}
                   canDelete={capabilities.customer.delete}
+                  canAccessBookings={capabilities.canAccessBookingsList}
                 />
               }
             />
@@ -348,7 +375,9 @@ function App() {
                     ...(capabilities.canAccessBookings
                       ? [
                           { to: "/bookings/list", label: "Bookings List" },
-                          { to: "/bookings/create", label: "Create Booking" },
+                          ...(capabilities.canCreateBooking
+                            ? [{ to: "/bookings/create", label: "Create Booking" }]
+                            : []),
                         ]
                       : []),
                   ]}
@@ -360,21 +389,51 @@ function App() {
               path="list"
               element={
                 <RequireSectionAccess allowed={capabilities.canAccessBookings}>
-                <BookingsListPage
-                  token={token}
-                  apiRequest={apiRequest}
-                  bookingStatusOptions={bookingStatusOptions}
-                />
+                  <BookingsListPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    bookingStatusOptions={bookingStatusOptions}
+                    canCreateCustomer={capabilities.customer.create}
+                    canCreateDestination={capabilities.destination.create}
+                    canCreateTraveler={capabilities.traveler.create}
+                    canCreateProductType={capabilities.productType.create}
+                    canCreateCatalogProduct={capabilities.productType.create}
+                    canCreateVendor={capabilities.productType.create}
+                  />
                 </RequireSectionAccess>
               }
             />
             <Route
               path="create"
               element={
-                <CreateBookingPage
+                <RequireSectionAccess allowed={capabilities.canCreateBooking}>
+                  <CreateBookingPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    bookingStatusOptions={bookingStatusOptions}
+                    canCreateCustomer={capabilities.customer.create}
+                    canCreateDestination={capabilities.destination.create}
+                    canCreateTraveler={capabilities.traveler.create}
+                    canCreateProductType={capabilities.productType.create}
+                    canCreateCatalogProduct={capabilities.productType.create}
+                    canCreateVendor={capabilities.productType.create}
+                  />
+                </RequireSectionAccess>
+              }
+            />
+            <Route
+              path="edit/:bookingId"
+              element={
+                <EditBookingPage
                   token={token}
                   apiRequest={apiRequest}
                   bookingStatusOptions={bookingStatusOptions}
+                  canCreateCustomer={capabilities.customer.create}
+                  canCreateDestination={capabilities.destination.create}
+                  canCreateTraveler={capabilities.traveler.create}
+                  canCreateProductType={capabilities.productType.create}
+                  canCreateCatalogProduct={capabilities.productType.create}
+                  canCreateVendor={capabilities.productType.create}
                 />
               }
             />
@@ -382,23 +441,35 @@ function App() {
           <Route
             path="/masters"
             element={
-              <RequireSectionAccess
-                allowed={
-                  capabilities.destination.canAccess ||
-                  capabilities.paymentMode.canAccess ||
-                  capabilities.productType.canAccess
-                }
-              >
+              <RequireSectionAccess allowed={capabilities.canAccessMasters}>
                 <MastersLayout
                   items={[
                     ...(capabilities.destination.canAccess
                       ? [{ to: "/masters/destinations", label: "Destinations" }]
                       : []),
+                    ...(capabilities.destination.canAccess ||
+                    capabilities.customer.canAccess ||
+                    capabilities.traveler.canAccess ||
+                    capabilities.productType.canAccess
+                      ? [{ to: "/masters/countries", label: "Countries" }]
+                      : []),
+                    ...(capabilities.productType.canAccess
+                      ? [{ to: "/masters/vendor-types", label: "Vendor Types" }]
+                      : []),
+                    ...(capabilities.traveler.canAccess
+                      ? [
+                          { to: "/masters/traveler-types", label: "Traveler Types" },
+                          { to: "/masters/visa-types", label: "Visa Types" },
+                        ]
+                      : []),
                     ...(capabilities.paymentMode.canAccess
                       ? [{ to: "/masters/payment-modes", label: "Payment Modes" }]
                       : []),
                     ...(capabilities.productType.canAccess
-                      ? [{ to: "/masters/product-types", label: "Product Types" }]
+                      ? [
+                          { to: "/masters/product-types", label: "Product Types" },
+                          { to: "/masters/product-details", label: "Product Details" },
+                        ]
                       : []),
                   ]}
                 />
@@ -443,6 +514,95 @@ function App() {
                     canCreate={capabilities.productType.create}
                     canUpdate={capabilities.productType.update}
                     canDelete={capabilities.productType.delete}
+                  />
+                </RequireSectionAccess>
+              }
+            />
+            <Route
+              path="product-details"
+              element={
+                <RequireSectionAccess allowed={capabilities.productType.canAccess}>
+                  <ManageProductDetailsPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    canCreate={capabilities.productType.create}
+                    canUpdate={capabilities.productType.update}
+                    canDelete={capabilities.productType.delete}
+                  />
+                </RequireSectionAccess>
+              }
+            />
+            <Route
+              path="countries"
+              element={
+                <RequireSectionAccess
+                  allowed={
+                    capabilities.destination.canAccess ||
+                    capabilities.customer.canAccess ||
+                    capabilities.traveler.canAccess ||
+                    capabilities.productType.canAccess
+                  }
+                >
+                  <ManageLookupMasterPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    slug="countries"
+                    title="Countries"
+                    documentTitle="Countries | Master | Travel Agency"
+                    canCreate={capabilities.destination.create}
+                    canUpdate={capabilities.destination.update}
+                    canDelete={capabilities.destination.delete}
+                  />
+                </RequireSectionAccess>
+              }
+            />
+            <Route
+              path="vendor-types"
+              element={
+                <RequireSectionAccess allowed={capabilities.productType.canAccess}>
+                  <ManageLookupMasterPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    slug="vendor-types"
+                    title="Vendor Types"
+                    documentTitle="Vendor Types | Master | Travel Agency"
+                    canCreate={capabilities.productType.create}
+                    canUpdate={capabilities.productType.update}
+                    canDelete={capabilities.productType.delete}
+                  />
+                </RequireSectionAccess>
+              }
+            />
+            <Route
+              path="traveler-types"
+              element={
+                <RequireSectionAccess allowed={capabilities.traveler.canAccess}>
+                  <ManageLookupMasterPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    slug="traveler-types"
+                    title="Traveler Types"
+                    documentTitle="Traveler Types | Master | Travel Agency"
+                    canCreate={capabilities.traveler.create}
+                    canUpdate={capabilities.traveler.update}
+                    canDelete={capabilities.traveler.delete}
+                  />
+                </RequireSectionAccess>
+              }
+            />
+            <Route
+              path="visa-types"
+              element={
+                <RequireSectionAccess allowed={capabilities.traveler.canAccess}>
+                  <ManageLookupMasterPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    slug="visa-types"
+                    title="Visa Types"
+                    documentTitle="Visa Types | Master | Travel Agency"
+                    canCreate={capabilities.traveler.create}
+                    canUpdate={capabilities.traveler.update}
+                    canDelete={capabilities.traveler.delete}
                   />
                 </RequireSectionAccess>
               }
@@ -643,13 +803,13 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                       activePrefix="/bookings"
                       items={[
                         { to: "/bookings/list", label: "Bookings List" },
-                        { to: "/bookings/create", label: "Create Booking" },
+                        ...(capabilities.canCreateBooking
+                          ? [{ to: "/bookings/create", label: "Create Booking" }]
+                          : []),
                       ]}
                     />
                   ) : null}
-                  {capabilities.destination.canAccess ||
-                  capabilities.paymentMode.canAccess ||
-                  capabilities.productType.canAccess ? (
+                  {capabilities.canAccessMasters ? (
                     <HorizontalNavDropdown
                       icon="bookings"
                       label="Master section"
@@ -658,11 +818,29 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                         ...(capabilities.destination.canAccess
                           ? [{ to: "/masters/destinations", label: "Destinations" }]
                           : []),
+                        ...(capabilities.destination.canAccess ||
+                        capabilities.customer.canAccess ||
+                        capabilities.traveler.canAccess ||
+                        capabilities.productType.canAccess
+                          ? [{ to: "/masters/countries", label: "Countries" }]
+                          : []),
+                        ...(capabilities.productType.canAccess
+                          ? [{ to: "/masters/vendor-types", label: "Vendor Types" }]
+                          : []),
+                        ...(capabilities.traveler.canAccess
+                          ? [
+                              { to: "/masters/traveler-types", label: "Traveler Types" },
+                              { to: "/masters/visa-types", label: "Visa Types" },
+                            ]
+                          : []),
                         ...(capabilities.paymentMode.canAccess
                           ? [{ to: "/masters/payment-modes", label: "Payment Modes" }]
                           : []),
                         ...(capabilities.productType.canAccess
-                          ? [{ to: "/masters/product-types", label: "Product Types" }]
+                          ? [
+                              { to: "/masters/product-types", label: "Product Types" },
+                              { to: "/masters/product-details", label: "Product Details" },
+                            ]
                           : []),
                       ]}
                     />
@@ -1015,34 +1193,65 @@ function DashboardPage({ token, user, capabilities }) {
         <CardLoader message="Loading dashboard metrics..." />
       ) : (
         <>
-          <div className="row">
-            <StatCard label="Signed in user" value={user?.name || user?.email || "-"} />
+          <div className="row g-4 mb-4 ta-dashboard">
+            <StatCard
+              label="Signed in user"
+              value={user?.name || user?.email || "-"}
+              actionTo="/profile"
+              actionLabel="View profile"
+            />
             {capabilities.canAccessBookings ? (
-              <StatCard label="Total bookings" value={String(state.bookings.length)} />
+              <StatCard
+                label="Total bookings"
+                value={String(state.bookings.length)}
+                actionTo="/bookings/list"
+                actionLabel="View bookings"
+              />
             ) : null}
             {capabilities.canAccessPayments ? (
-              <StatCard label="Customer payments" value={formatCurrency(totalReceived)} />
+              <StatCard
+                label="Customer payments"
+                value={formatCurrency(totalReceived)}
+                actionTo="/payments/customer"
+                actionLabel="Customer payments"
+              />
             ) : null}
             {capabilities.canAccessPayments ? (
-              <StatCard label="Vendor payments" value={formatCurrency(totalVendorPaid)} />
+              <StatCard
+                label="Vendor payments"
+                value={formatCurrency(totalVendorPaid)}
+                actionTo="/payments/vendor"
+                actionLabel="Vendor payments"
+              />
             ) : null}
           </div>
-          <div className="row">
+          <div className="row g-4 align-items-stretch">
             {capabilities.canAccessBookings ? (
-              <div className={capabilities.canAccessPayments ? "col-xl-7" : "col-12"}>
-                <div className="card">
-                  <div className="card-body">
-                    <div className="ta-toolbar">
+              <div
+                className={`d-flex flex-column ${capabilities.canAccessPayments ? "col-xl-7" : "col-12"}`}
+              >
+                <div className="card flex-grow-1 w-100 h-100">
+                  <div className="card-body d-flex flex-column">
+                    <div className="ta-toolbar flex-wrap gap-2">
                       <div>
                         <h4 className="card-title mb-1">Recent Bookings</h4>
                         <p className="ta-card-muted mb-0">
                           Latest booking records from the backend.
                         </p>
                       </div>
-                      <div className="badge bg-warning-subtle text-warning ta-status-badge">
-                        Pending: {pendingBookings}
+                      <div className="d-flex flex-wrap align-items-center gap-2">
+                        <div className="badge bg-warning-subtle text-warning ta-status-badge">
+                          Pending: {pendingBookings}
+                        </div>
+                        <NavLink to="/bookings/create" className="btn btn-primary btn-sm">
+                          Create booking
+                        </NavLink>
+                        <NavLink to="/bookings/list" className="btn btn-outline-secondary btn-sm">
+                          Bookings list
+                        </NavLink>
                       </div>
                     </div>
+                    <div className="mt-3">
                     <SimpleTable
                       columns={["ID", "DRC No", "Travel Start Date", "Status", "Total"]}
                       rows={state.bookings
@@ -1057,25 +1266,34 @@ function DashboardPage({ token, user, capabilities }) {
                         ])}
                       emptyMessage="No bookings found."
                     />
+                    </div>
                   </div>
                 </div>
               </div>
             ) : null}
             {capabilities.canAccessPayments ? (
-              <div className={capabilities.canAccessBookings ? "col-xl-5" : "col-12"}>
-                <div className="card">
-                  <div className="card-body">
-                    <div className="ta-toolbar">
+              <div
+                className={`d-flex flex-column ${capabilities.canAccessBookings ? "col-xl-5" : "col-12"}`}
+              >
+                <div className="card flex-grow-1 w-100 h-100">
+                  <div className="card-body d-flex flex-column">
+                    <div className="ta-toolbar flex-wrap gap-2">
                       <div>
                         <h4 className="card-title mb-1">Recent Payments</h4>
                         <p className="ta-card-muted mb-0">
                           Latest customer payments received.
                         </p>
                       </div>
-                      <NavLink to="/payments/customer" className="btn btn-primary btn-sm">
-                        Open Payments
-                      </NavLink>
+                      <div className="d-flex flex-wrap gap-2">
+                        <NavLink to="/payments/vendor" className="btn btn-outline-secondary btn-sm">
+                          Vendor payments
+                        </NavLink>
+                        <NavLink to="/payments/customer" className="btn btn-primary btn-sm">
+                          Customer payments
+                        </NavLink>
+                      </div>
                     </div>
+                    <div className="mt-3">
                     <SimpleTable
                       columns={["ID", "Booking", "Method", "Amount", "Status"]}
                       rows={state.payments
@@ -1090,18 +1308,36 @@ function DashboardPage({ token, user, capabilities }) {
                         ])}
                       emptyMessage="No payments found."
                     />
+                    </div>
                   </div>
                 </div>
               </div>
             ) : null}
             {!capabilities.canAccessBookings && !capabilities.canAccessPayments ? (
               <div className="col-12">
-                <div className="card">
+                <div className="card h-100">
                   <div className="card-body">
                     <h4 className="card-title mb-2">Welcome</h4>
-                    <p className="ta-card-muted mb-0">
+                    <p className="ta-card-muted mb-3">
                       Your account is active, but no booking or payment modules are assigned yet.
                     </p>
+                    <div className="d-flex flex-wrap gap-2">
+                      {capabilities.customer.canAccess ? (
+                        <NavLink to="/customers/list" className="btn btn-primary btn-sm">
+                          Manage customers
+                        </NavLink>
+                      ) : null}
+                      {capabilities.traveler.canAccess ? (
+                        <NavLink to="/customers/travelers" className="btn btn-outline-primary btn-sm">
+                          Travelers
+                        </NavLink>
+                      ) : null}
+                      {capabilities.canAccessAccess ? (
+                        <NavLink to="/access/users" className="btn btn-outline-secondary btn-sm">
+                          Users &amp; access
+                        </NavLink>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1109,493 +1345,6 @@ function DashboardPage({ token, user, capabilities }) {
           </div>
         </>
       )}
-    </>
-  );
-}
-
-function BookingsPage({ token }) {
-  const [page, setPage] = useState(1);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [pageState, setPageState] = useState({
-    loading: true,
-    error: "",
-    bookingsPage: null,
-    customers: [],
-    destinations: [],
-    travelers: [],
-    products: [],
-    vendors: [],
-  });
-  const [form, setForm] = useState(createEmptyBookingForm());
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState("");
-
-  useEffect(() => {
-    document.title = "Bookings | Travel Agency";
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setPageState((current) => ({ ...current, loading: true, error: "" }));
-
-    Promise.all([
-      apiRequest(`/bookings?page=${page}&page_size=10`, { token }),
-      apiRequest("/customers?page=1&page_size=100", { token }),
-      apiRequest("/masters/destinations?page=1&page_size=100", { token }),
-      apiRequest("/travelers?page=1&page_size=100", { token }),
-      apiRequest("/masters/products?page=1&page_size=100", { token }),
-      apiRequest("/masters/vendors?page=1&page_size=100", { token }),
-    ])
-      .then(([bookingsPage, customers, destinations, travelers, products, vendors]) => {
-        if (!active) {
-          return;
-        }
-        setPageState({
-          loading: false,
-          error: "",
-          bookingsPage,
-          customers: customers.items,
-          destinations: destinations.items,
-          travelers: travelers.items,
-          products: products.items,
-          vendors: vendors.items,
-        });
-      })
-      .catch((requestError) => {
-        if (!active) {
-          return;
-        }
-        setPageState((current) => ({
-          ...current,
-          loading: false,
-          error: requestError.message || "Unable to load bookings data.",
-        }));
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [page, refreshKey, token]);
-
-  useEffect(() => {
-    if (
-      !pageState.customers.length ||
-      !pageState.destinations.length ||
-      !pageState.products.length ||
-      !pageState.vendors.length
-    ) {
-      return;
-    }
-
-    setForm((current) => {
-      if (current.customer_id) {
-        return current;
-      }
-      const baseForm = createDefaultBookingForm(pageState);
-      return baseForm;
-    });
-  }, [pageState]);
-
-  const customerMap = useMemo(
-    () => createMap(pageState.customers, "id"),
-    [pageState.customers],
-  );
-  const destinationMap = useMemo(
-    () => createMap(pageState.destinations, "id"),
-    [pageState.destinations],
-  );
-  const availableTravelers = useMemo(
-    () =>
-      pageState.travelers.filter(
-        (traveler) => String(traveler.customer_id) === String(form.customer_id),
-      ),
-    [form.customer_id, pageState.travelers],
-  );
-
-  function updateBookingAmounts(nextValues) {
-    const quantity = Number(nextValues.quantity || 0);
-    const price = Number(nextValues.price || 0);
-    return {
-      ...nextValues,
-      line_total: quantity && price ? (quantity * price).toFixed(2) : "0.00",
-    };
-  }
-
-  function handleCustomerChange(value) {
-    const nextTravelers = pageState.travelers.filter(
-      (traveler) => String(traveler.customer_id) === String(value),
-    );
-    setForm((current) => ({
-      ...current,
-      customer_id: value,
-      traveler_id: nextTravelers[0] ? String(nextTravelers[0].id) : "",
-    }));
-  }
-
-  function handleProductChange(value) {
-    const product = pageState.products.find((item) => String(item.id) === String(value));
-    setForm((current) => {
-      const nextForm = {
-        ...current,
-        product_id: value,
-        vendor_id: product ? String(product.vendor_id) : current.vendor_id,
-        price: product ? String(product.price) : current.price,
-      };
-      return updateBookingAmounts(nextForm);
-    });
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setSubmitting(true);
-    setFormError("");
-
-    try {
-      const payload = {
-        customer_id: Number(form.customer_id),
-        destination_id: Number(form.destination_id),
-        atpl_member: form.atpl_member,
-        drc_no: form.drc_no || null,
-        travel_start_date: form.travel_start_date || null,
-        travel_end_date: form.travel_end_date || null,
-        estimated_margin: form.estimated_margin ? Number(form.estimated_margin) : null,
-        total_amount: Number(form.total_amount),
-        status: form.status,
-        travelers: form.traveler_id
-          ? [
-              {
-                traveler_id: Number(form.traveler_id),
-                seat_preference: form.seat_preference || null,
-                meal_preference: form.meal_preference || null,
-                special_request: form.special_request || null,
-              },
-            ]
-          : [],
-        products: form.product_id
-          ? [
-              {
-                product_id: Number(form.product_id),
-                vendor_id: Number(form.vendor_id),
-                quantity: Number(form.quantity),
-                price: Number(form.price),
-                total_amount: Number(form.line_total),
-              },
-            ]
-          : [],
-      };
-
-      await apiRequest("/bookings", {
-        method: "POST",
-        token,
-        body: payload,
-      });
-      setForm(createDefaultBookingForm(pageState));
-      setPage(1);
-      setRefreshKey((current) => current + 1);
-    } catch (requestError) {
-      setFormError(requestError.message || "Unable to save booking.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleDelete(bookingId) {
-    try {
-      await apiRequest(`/bookings/${bookingId}`, {
-        method: "DELETE",
-        token,
-      });
-      setRefreshKey((current) => current + 1);
-      setDeleteTarget(null);
-    } catch (requestError) {
-      setPageState((current) => ({
-        ...current,
-        error: requestError.message || "Unable to delete booking.",
-      }));
-    }
-  }
-
-  return (
-    <>
-      <PageHeader title="Bookings" subtitle="Create and manage travel bookings" />
-      <AlertMessage message={pageState.error} variant="danger" />
-      <div className="row">
-        <div className="col-xl-8">
-          <div className="card">
-            <div className="card-body">
-              <div className="ta-toolbar">
-                <div>
-                  <h4 className="card-title mb-1">Bookings List</h4>
-                  <p className="ta-card-muted mb-0">
-                    Current booking records with backend pagination.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-light"
-                  onClick={() => setRefreshKey((current) => current + 1)}
-                >
-                  Refresh
-                </button>
-              </div>
-              {pageState.loading ? (
-                <CardLoader message="Loading bookings..." />
-              ) : (
-                <>
-                  <SimpleTable
-                    columns={[
-                      "ID",
-                      "DRC No",
-                      "Customer",
-                      "Destination",
-                      "Travel Start Date",
-                      "Status",
-                      "Total",
-                      "Actions",
-                    ]}
-                    rows={(pageState.bookingsPage?.items || []).map((booking) => [
-                      `#${booking.id}`,
-                      booking.drc_no || "-",
-                      (customerMap[booking.customer_id] ? [customerMap[booking.customer_id].first_name, customerMap[booking.customer_id].last_name].filter(Boolean).join(" ") || customerMap[booking.customer_id].customer_id : null) ||
-                        `Customer #${booking.customer_id}`,
-                      destinationMap[booking.destination_id]?.destination_name ||
-                        `Destination #${booking.destination_id}`,
-                      formatDate(booking.travel_start_date),
-                      <StatusBadge key={`booking-status-${booking.id}`} status={booking.status} />,
-                      formatCurrency(booking.total_amount),
-                      <button
-                        key={`booking-delete-${booking.id}`}
-                        type="button"
-                        className="btn btn-soft-danger btn-sm"
-                        onClick={() =>
-                          setDeleteTarget({
-                            id: booking.id,
-                            label: booking.drc_no || `Booking #${booking.id}`,
-                          })
-                        }
-                      >
-                        Delete
-                      </button>,
-                    ])}
-                    emptyMessage="No bookings found."
-                  />
-                  <PaginationBar
-                    pageData={pageState.bookingsPage}
-                    onSelectPage={setPage}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="col-xl-4">
-          <div className="card">
-            <div className="card-body">
-              <h4 className="card-title mb-1">Create Booking</h4>
-              <p className="ta-card-muted mb-3">
-                Phase 1 supports one traveler line and one product line per booking.
-              </p>
-              <AlertMessage message={formError} variant="danger" />
-              <form onSubmit={handleSubmit}>
-                <div className="row g-3">
-                  <SelectField
-                    label="Customer"
-                    value={form.customer_id}
-                    onChange={handleCustomerChange}
-                    options={pageState.customers.map((item) => ({
-                      value: String(item.id),
-                      label: [item.first_name, item.last_name].filter(Boolean).join(" ") || item.customer_id || item.email || "Customer",
-                    }))}
-                  />
-                  <SelectField
-                    label="Destination"
-                    value={form.destination_id}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, destination_id: value }))
-                    }
-                    options={pageState.destinations.map((item) => ({
-                      value: String(item.id),
-                      label: item.destination_name,
-                    }))}
-                  />
-                  <TextField
-                    label="DRC No"
-                    value={form.drc_no}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, drc_no: value }))
-                    }
-                  />
-                  <TextField
-                    label="Total Amount"
-                    type="number"
-                    step="0.01"
-                    value={form.total_amount}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, total_amount: value }))
-                    }
-                  />
-                  <TextField
-                    label="Travel Start Date"
-                    type="date"
-                    value={form.travel_start_date}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, travel_start_date: value }))
-                    }
-                  />
-                  <TextField
-                    label="Travel End Date"
-                    type="date"
-                    value={form.travel_end_date}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, travel_end_date: value }))
-                    }
-                  />
-                  <TextField
-                    label="Estimated Margin"
-                    type="number"
-                    step="0.01"
-                    value={form.estimated_margin}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, estimated_margin: value }))
-                    }
-                  />
-                  <SelectField
-                    label="Status"
-                    value={form.status}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, status: value }))
-                    }
-                    options={bookingStatusOptions.map((status) => ({
-                      value: status,
-                      label: status,
-                    }))}
-                  />
-                  <SelectField
-                    label="Traveler"
-                    value={form.traveler_id}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, traveler_id: value }))
-                    }
-                    options={availableTravelers.map((item) => ({
-                      value: String(item.id),
-                      label: `${item.first_name} ${item.last_name || ""}`.trim(),
-                    }))}
-                  />
-                  <TextField
-                    label="Seat Preference"
-                    value={form.seat_preference}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, seat_preference: value }))
-                    }
-                  />
-                  <TextField
-                    label="Meal Preference"
-                    value={form.meal_preference}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, meal_preference: value }))
-                    }
-                  />
-                  <TextField
-                    label="Special Request"
-                    value={form.special_request}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, special_request: value }))
-                    }
-                  />
-                  <SelectField
-                    label="Product"
-                    value={form.product_id}
-                    onChange={handleProductChange}
-                    options={pageState.products.map((item) => ({
-                      value: String(item.product_id),
-                      label: item.product_name,
-                    }))}
-                  />
-                  <SelectField
-                    label="Vendor"
-                    value={form.vendor_id}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, vendor_id: value }))
-                    }
-                    options={pageState.vendors.map((item) => ({
-                      value: String(item.id),
-                      label: item.vendor_name,
-                    }))}
-                  />
-                  <TextField
-                    label="Quantity"
-                    type="number"
-                    min="1"
-                    value={form.quantity}
-                    onChange={(value) =>
-                      setForm((current) =>
-                        updateBookingAmounts({ ...current, quantity: value }),
-                      )
-                    }
-                  />
-                  <TextField
-                    label="Price"
-                    type="number"
-                    step="0.01"
-                    value={form.price}
-                    onChange={(value) =>
-                      setForm((current) =>
-                        updateBookingAmounts({ ...current, price: value }),
-                      )
-                    }
-                  />
-                  <TextField
-                    label="Line Total"
-                    type="number"
-                    step="0.01"
-                    value={form.line_total}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, line_total: value }))
-                    }
-                  />
-                  <div className="col-12">
-                    <div className="form-check">
-                      <input
-                        id="atpl_member"
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={form.atpl_member}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            atpl_member: event.target.checked,
-                          }))
-                        }
-                      />
-                      <label className="form-check-label" htmlFor="atpl_member">
-                        ATPL member
-                      </label>
-                    </div>
-                  </div>
-                  <div className="col-12 d-grid">
-                    <button type="submit" className="btn btn-primary" disabled={submitting}>
-                      {submitting ? "Saving..." : "Save Booking"}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-      <ConfirmDeleteModal
-        open={Boolean(deleteTarget)}
-        title="Delete Booking"
-        message={
-          deleteTarget
-            ? `Are you sure you want to delete ${deleteTarget.label}?`
-            : ""
-        }
-        confirmLabel="Delete Booking"
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => handleDelete(deleteTarget.id)}
-      />
     </>
   );
 }
@@ -2160,7 +1909,7 @@ function ProfilePage({ token, user, onUserUpdated }) {
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -2220,7 +1969,7 @@ function ProfilePage({ token, user, onUserUpdated }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
-    setSuccessModalOpen(false);
+    setSuccessMessage("");
 
     if (!form.name.trim()) {
       setError("Name is required.");
@@ -2278,7 +2027,7 @@ function ProfilePage({ token, user, onUserUpdated }) {
       });
       onUserUpdated(updatedUser);
       setForm((current) => ({ ...current, password: "", image_file: null }));
-      setSuccessModalOpen(true);
+      setSuccessMessage("Profile updated successfully.");
     } catch (requestError) {
       setError(requestError.message || "Unable to update profile.");
     } finally {
@@ -2290,7 +2039,7 @@ function ProfilePage({ token, user, onUserUpdated }) {
     <>
       <PageHeader
         title="My Profile"
-        subtitle="Update your account details from the horizontal topbar menu"
+        subtitle="Update your name, contact details, avatar, and password on this page"
       />
       <div className="row justify-content-center">
         <div className="col-xl-8">
@@ -2298,6 +2047,7 @@ function ProfilePage({ token, user, onUserUpdated }) {
             <div className="card-body">
               {loading ? <CardLoader message="Loading profile..." /> : null}
               <AlertMessage message={error} variant="danger" />
+              <AlertMessage message={successMessage} variant="success" />
               {!loading ? (
                 <form onSubmit={handleSubmit}>
                   <div className="row g-3">
@@ -2373,12 +2123,6 @@ function ProfilePage({ token, user, onUserUpdated }) {
           </div>
         </div>
       </div>
-      <SuccessModal
-        open={successModalOpen}
-        title="Profile Updated"
-        message="Profile updated successfully."
-        onClose={() => setSuccessModalOpen(false)}
-      />
     </>
   );
 }
@@ -2548,14 +2292,20 @@ function PageHeader({ title, subtitle }) {
   );
 }
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, actionTo, actionLabel }) {
   return (
-    <div className="col-md-6 col-xl-3">
-      <div className="card">
-        <div className="card-body">
+    <div className="col-md-6 col-xl-3 d-flex">
+      <div className="card ta-dashboard-stat-card flex-grow-1 w-100 h-100">
+        <div className="card-body d-flex flex-column">
           <p className="ta-stat-label">{label}</p>
           <h4 className="mb-1 mt-1">{value}</h4>
-          <p className="ta-card-muted mb-0">Live backend data</p>
+          {actionTo && actionLabel ? (
+            <NavLink to={actionTo} className="btn btn-primary btn-sm w-100 mt-auto">
+              {actionLabel}
+            </NavLink>
+          ) : (
+            <p className="ta-card-muted mb-0 mt-auto small">Live backend data</p>
+          )}
         </div>
       </div>
     </div>
@@ -2619,14 +2369,6 @@ function PaginationBar({ pageData, onSelectPage }) {
       </div>
     </div>
   );
-}
-
-function AlertMessage({ message, variant }) {
-  if (!message) {
-    return null;
-  }
-
-  return <div className={`alert alert-${variant}`}>{message}</div>;
 }
 
 function SuccessModal({ open, title, message, onClose }) {
@@ -2827,6 +2569,76 @@ function StatusBadge({ status }) {
   );
 }
 
+/** Build a readable message from failed API responses (FastAPI and generic JSON). */
+function formatHttpErrorMessage(response, data, rawText) {
+  const code = response.status;
+  const badge = Number.isFinite(code) && code > 0 ? `[HTTP ${code}] ` : "";
+
+  if (code === 502 || code === 503) {
+    return (
+      badge +
+      "The API closed the connection or is not running. If you use Vite’s proxy, start FastAPI on port 8000 " +
+      "(e.g. uvicorn in the backend folder). If the API was just saved, wait for it to finish reloading, then retry."
+    );
+  }
+
+  if (data?.detail != null) {
+    const d = data.detail;
+    if (typeof d === "string" && d.trim()) {
+      return badge + d.trim();
+    }
+    if (Array.isArray(d)) {
+      const joined = d
+        .map((item) => {
+          if (item == null) {
+            return "";
+          }
+          if (typeof item === "string") {
+            return item;
+          }
+          if (typeof item === "object") {
+            const loc = Array.isArray(item.loc) ? item.loc.filter(Boolean).join(".") : "";
+            const msg = item.msg || item.message || "";
+            return loc && msg ? `${loc}: ${msg}` : msg || loc || JSON.stringify(item);
+          }
+          return String(item);
+        })
+        .filter(Boolean)
+        .join(", ");
+      if (joined) {
+        return badge + joined;
+      }
+    } else if (typeof d === "object") {
+      try {
+        const s = JSON.stringify(d);
+        if (s && s !== "{}") {
+          return badge + s;
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (String(d).trim()) {
+      return badge + String(d);
+    }
+  }
+
+  if (typeof data?.message === "string" && data.message.trim()) {
+    return badge + data.message.trim();
+  }
+  if (typeof data?.error === "string" && data.error.trim()) {
+    return badge + data.error.trim();
+  }
+
+  const snippet = String(rawText || "")
+    .trim()
+    .slice(0, 280);
+  if (snippet) {
+    return badge + snippet;
+  }
+
+  return badge ? `${badge.trimEnd()} Request failed.` : "Request failed.";
+}
+
 function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});
   const requestOptions = {
@@ -2851,26 +2663,38 @@ function apiRequest(path, options = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  return fetch(buildApiUrl(path), requestOptions).then(async (response) => {
-    if (response.status === 204) {
-      return null;
-    }
+  const url = buildApiUrl(path);
+  return fetch(url, requestOptions)
+    .catch((err) => {
+      const msg = err?.message || String(err);
+      if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg.includes("Load failed")) {
+        throw new Error(
+          `Cannot reach API (${url}). Start FastAPI on port 8000 (e.g. uvicorn app.main:app --reload --port 8000). ` +
+            `Dev uses Vite proxy: set VITE_API_PROXY_TARGET if the API is not at http://127.0.0.1:8000. ` +
+            `Or set VITE_API_BASE_URL to the full API root. (API base: ${API_BASE})`,
+        );
+      }
+      throw err instanceof Error ? err : new Error(msg);
+    })
+    .then(async (response) => {
+      if (response.status === 204) {
+        return null;
+      }
 
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : null;
+      const text = await response.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error(text?.slice(0, 200) || "Invalid response from server.");
+      }
 
-    if (!response.ok) {
-      const detail = Array.isArray(data?.detail)
-        ? data.detail
-            .map((item) => item?.msg || item?.message || "")
-            .filter(Boolean)
-            .join(", ")
-        : data?.detail;
-      throw new Error(detail || "Request failed.");
-    }
+      if (!response.ok) {
+        throw new Error(formatHttpErrorMessage(response, data, text));
+      }
 
-    return data;
-  });
+      return data;
+    });
 }
 
 function normalizeApiBase(value) {
@@ -2885,10 +2709,14 @@ function buildApiUrl(path) {
 }
 
 function getApiOrigin(value) {
+  const s = String(value || "");
+  if (!s || s.startsWith("/")) {
+    return typeof window !== "undefined" ? window.location.origin : "";
+  }
   try {
-    return new URL(value).origin;
+    return new URL(s).origin;
   } catch {
-    return window.location.origin;
+    return typeof window !== "undefined" ? window.location.origin : "";
   }
 }
 
@@ -2944,59 +2772,6 @@ function mapRoleNamesToIds(roleNames, roles) {
       wanted.has(String(role.role_name ?? "").trim().toLowerCase())
     )
     .map((role) => role.id);
-}
-
-function createEmptyBookingForm() {
-  return {
-    customer_id: "",
-    destination_id: "",
-    atpl_member: false,
-    drc_no: "",
-    travel_start_date: "",
-    travel_end_date: "",
-    estimated_margin: "",
-    total_amount: "",
-    status: "Pending",
-    traveler_id: "",
-    seat_preference: "",
-    meal_preference: "",
-    special_request: "",
-    product_id: "",
-    vendor_id: "",
-    quantity: "1",
-    price: "",
-    line_total: "0.00",
-  };
-}
-
-function createDefaultBookingForm(data) {
-  const firstCustomer = data.customers[0];
-  const firstDestination = data.destinations[0];
-  const firstProduct = data.products[0];
-  const matchingTravelers = data.travelers.filter(
-    (traveler) => traveler.customer_id === firstCustomer?.id,
-  );
-
-  return {
-    customer_id: firstCustomer ? String(firstCustomer.id) : "",
-    destination_id: firstDestination ? String(firstDestination.id) : "",
-    atpl_member: false,
-    drc_no: "",
-    travel_start_date: "",
-    travel_end_date: "",
-    estimated_margin: "",
-    total_amount: firstProduct ? String(firstProduct.price) : "",
-    status: "Pending",
-    traveler_id: matchingTravelers[0] ? String(matchingTravelers[0].id) : "",
-    seat_preference: "",
-    meal_preference: "",
-    special_request: "",
-    product_id: firstProduct ? String(firstProduct.product_id) : "",
-    vendor_id: firstProduct ? String(firstProduct.vendor_id) : "",
-    quantity: "1",
-    price: firstProduct ? String(firstProduct.price) : "",
-    line_total: firstProduct ? String(firstProduct.price) : "0.00",
-  };
 }
 
 function createEmptyPaymentForm() {

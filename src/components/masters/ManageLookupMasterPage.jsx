@@ -6,20 +6,35 @@ import {
   FormModal,
   ManageCard,
   PaginationBar,
+  SelectField,
   SimpleTable,
   SuccessModal,
   TextField,
+  formatDateTime,
 } from "../access/AccessShared.jsx";
 
-function createEmptyProductTypeForm() {
+function emptyForm() {
   return {
     id: "",
-    product_name: "",
-    description: "",
+    name: "",
+    sort_order: "0",
+    is_active: "true",
   };
 }
 
-function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
+/**
+ * Generic CRUD for /masters/{slug} lookup tables (countries, vendor-types, traveler-types, visa-types).
+ */
+function ManageLookupMasterPage({
+  token,
+  apiRequest,
+  slug,
+  title,
+  documentTitle,
+  canCreate,
+  canUpdate,
+  canDelete,
+}) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -27,25 +42,24 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pageData, setPageData] = useState(null);
-  const [form, setForm] = useState(createEmptyProductTypeForm());
+  const [form, setForm] = useState(emptyForm());
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
 
+  const basePath = `/masters/${slug}`;
+
   useEffect(() => {
-    document.title = "Manage Product Type | Travel Agency";
-  }, []);
+    document.title = documentTitle || `${title} | Master | Travel Agency`;
+  }, [documentTitle, title]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError("");
 
-    apiRequest(
-      `/masters/product-types?page=${page}&page_size=${pageSize}`,
-      { token },
-    )
+    apiRequest(`${basePath}?page=${page}&page_size=${pageSize}`, { token })
       .then((response) => {
         if (!active) {
           return;
@@ -57,64 +71,65 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
         if (!active) {
           return;
         }
-        setError(requestError.message || "Unable to load product types.");
+        setError(requestError.message || `Unable to load ${title.toLowerCase()}.`);
         setLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, refreshKey, token]);
+  }, [apiRequest, basePath, page, pageSize, refreshKey, token, title]);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
-    if (!form.product_name.trim()) {
-      setFormError("Product name is required.");
+    if (!String(form.name || "").trim()) {
+      setFormError("Name is required.");
+      return;
+    }
+    const sortNum = Number(form.sort_order);
+    if (!Number.isFinite(sortNum)) {
+      setFormError("Sort order must be a number.");
       return;
     }
     setSaving(true);
     const isEditing = Boolean(form.id);
 
     try {
-      await apiRequest(
-        form.id ? `/masters/product-types/${form.id}` : "/masters/product-types",
-        {
-          method: form.id ? "PATCH" : "POST",
-          token,
-          body: {
-            product_name: form.product_name.trim(),
-            description: form.description.trim() || null,
-          },
+      await apiRequest(form.id ? `${basePath}/${form.id}` : basePath, {
+        method: form.id ? "PATCH" : "POST",
+        token,
+        body: {
+          name: form.name.trim(),
+          sort_order: sortNum,
+          is_active: form.is_active === "true",
         },
-      );
-      setForm(createEmptyProductTypeForm());
+      });
+      setForm(emptyForm());
       setModalOpen(false);
       setPage(1);
       setRefreshKey((current) => current + 1);
       setSuccessModal({
-        title: isEditing ? "Product Type Updated" : "Product Type Created",
-        message: isEditing
-          ? "Product type updated successfully."
-          : "Product type created successfully.",
+        title: isEditing ? `${title} updated` : `${title} created`,
+        message: isEditing ? "Saved successfully." : "Created successfully.",
       });
     } catch (requestError) {
-      setFormError(requestError.message || "Unable to save product type.");
+      setFormError(requestError.message || "Unable to save.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(productTypeId) {
+  async function handleDelete(id) {
     try {
-      await apiRequest(`/masters/product-types/${productTypeId}`, { method: "DELETE", token });
+      await apiRequest(`${basePath}/${id}`, { method: "DELETE", token });
       setDeleteTarget(null);
       if ((pageData?.items || []).length === 1 && page > 1) {
         setPage((current) => current - 1);
       }
       setRefreshKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError.message || "Unable to delete product type.");
+      setError(requestError.message || "Unable to delete.");
     }
   }
 
@@ -122,13 +137,13 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
     <>
       <AlertMessage message={error} variant="danger" />
       <ManageCard
-        title="Manage Product Type"
-        subtitle="Create and maintain product type masters."
-        actionLabel={canCreate ? "Add Product Type" : undefined}
+        title={title}
+        subtitle={`Maintain values used in dropdowns across the app.`}
+        actionLabel={canCreate ? `Add ${title.replace(/s$/, "")}` : undefined}
         onAction={
           canCreate
             ? () => {
-                setForm(createEmptyProductTypeForm());
+                setForm(emptyForm());
                 setFormError("");
                 setModalOpen(true);
               }
@@ -136,26 +151,29 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
         }
       >
         {loading ? (
-          <CardLoader message="Loading product types..." />
+          <CardLoader message={`Loading ${title.toLowerCase()}…`} />
         ) : (
           <>
             <SimpleTable
-              columns={["ID", "Product Name", "Description", "Actions"]}
+              columns={["ID", "Name", "Sort", "Active", "Created", "Actions"]}
               rows={(pageData?.items || []).map((item) => [
                 `#${item.id}`,
-                item.product_name,
-                item.description || "-",
-                <div key={`product-type-actions-${item.id}`} className="ta-table-actions">
+                item.name || "—",
+                String(item.sort_order ?? ""),
+                item.is_active ? "Yes" : "No",
+                formatDateTime(item.created_at),
+                <div key={`lk-actions-${item.id}`} className="ta-table-actions">
                   {canUpdate ? (
                     <button
                       type="button"
                       className="btn btn-icon btn-soft-primary btn-sm"
-                      aria-label="Edit product type"
+                      aria-label="Edit"
                       onClick={() => {
                         setForm({
                           id: String(item.id),
-                          product_name: item.product_name || "",
-                          description: item.description || "",
+                          name: item.name || "",
+                          sort_order: String(item.sort_order ?? 0),
+                          is_active: item.is_active ? "true" : "false",
                         });
                         setFormError("");
                         setModalOpen(true);
@@ -171,11 +189,11 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
                     <button
                       type="button"
                       className="btn btn-icon btn-soft-danger btn-sm"
-                      aria-label="Delete product type"
+                      aria-label="Delete"
                       onClick={() =>
                         setDeleteTarget({
                           id: item.id,
-                          label: item.product_name,
+                          label: item.name || `#${item.id}`,
                         })
                       }
                     >
@@ -187,11 +205,11 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
                       </svg>
                     </button>
                   ) : null}
-                  {!canUpdate && !canDelete ? "-" : null}
+                  {!canUpdate && !canDelete ? "—" : null}
                 </div>,
               ])}
               sortable
-              emptyMessage="No product types found."
+              emptyMessage={`No ${title.toLowerCase()} found.`}
             />
             <PaginationBar
               pageData={pageData}
@@ -205,14 +223,15 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
           </>
         )}
       </ManageCard>
+
       <FormModal
         open={modalOpen}
-        title={form.id ? "Update Product Type" : "Add Product Type"}
-        saveLabel={form.id ? "Update Product Type" : "Create Product Type"}
+        title={form.id ? `Update ${title.replace(/s$/, "")}` : `Add ${title.replace(/s$/, "")}`}
+        saveLabel={form.id ? "Save" : "Create"}
         saving={saving}
         onCancel={() => {
           setModalOpen(false);
-          setForm(createEmptyProductTypeForm());
+          setForm(emptyForm());
           setFormError("");
         }}
         onSubmit={handleSubmit}
@@ -220,29 +239,34 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
           <TextField
-            label="Product Name"
-            value={form.product_name}
+            label="Name"
+            value={form.name}
             required
-            onChange={(value) => setForm((current) => ({ ...current, product_name: value }))}
+            onChange={(value) => setForm((current) => ({ ...current, name: value }))}
           />
-          <div className="col-12">
-            <label className="form-label">Description</label>
-            <textarea
-              className="form-control"
-              rows="3"
-              value={form.description}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, description: event.target.value }))
-              }
-            />
-          </div>
+          <TextField
+            label="Sort order"
+            value={form.sort_order}
+            required
+            onChange={(value) => setForm((current) => ({ ...current, sort_order: value }))}
+          />
+          <SelectField
+            label="Active"
+            value={form.is_active}
+            onChange={(value) => setForm((current) => ({ ...current, is_active: value }))}
+            options={[
+              { value: "true", label: "Yes" },
+              { value: "false", label: "No" },
+            ]}
+          />
         </div>
       </FormModal>
+
       <ConfirmDeleteModal
         open={Boolean(deleteTarget)}
-        title="Delete Product Type"
-        message={deleteTarget ? `Are you sure you want to delete ${deleteTarget.label}?` : ""}
-        confirmLabel="Delete Product Type"
+        title={`Delete ${title.replace(/s$/, "")}`}
+        message={deleteTarget ? `Delete ${deleteTarget.label}?` : ""}
+        confirmLabel="Delete"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => handleDelete(deleteTarget.id)}
       />
@@ -256,4 +280,4 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
   );
 }
 
-export default ManageProductTypesPage;
+export default ManageLookupMasterPage;

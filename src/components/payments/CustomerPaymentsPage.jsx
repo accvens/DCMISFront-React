@@ -19,10 +19,11 @@ import {
   formatCurrency,
   validatePaymentForm,
 } from "./PaymentsShared.jsx";
+import { paymentMethodFieldOptions } from "../bookings/BookingsShared.jsx";
 
 function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [state, setState] = useState({
@@ -30,6 +31,7 @@ function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
     error: "",
     paymentsPage: null,
     bookings: [],
+    paymentModes: [],
   });
   const [form, setForm] = useState(createEmptyPaymentForm());
   const [formError, setFormError] = useState("");
@@ -48,8 +50,9 @@ function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
     Promise.all([
       apiRequest(`/payments?page=${page}&page_size=${pageSize}`, { token }),
       apiRequest("/bookings?page=1&page_size=100", { token }),
+      apiRequest("/masters/payment-modes?page=1&page_size=100", { token }).catch(() => ({ items: [] })),
     ])
-      .then(([paymentsPage, bookings]) => {
+      .then(([paymentsPage, bookings, paymentModes]) => {
         if (!active) {
           return;
         }
@@ -58,6 +61,7 @@ function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
           error: "",
           paymentsPage,
           bookings: bookings.items,
+          paymentModes: paymentModes.items || [],
         });
       })
       .catch((requestError) => {
@@ -165,8 +169,14 @@ function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
                 `#${payment.id}`,
                 bookingMap[payment.booking_id]?.drc_no || `Booking #${payment.booking_id}`,
                 payment.payment_method,
-                formatCurrency(payment.amount),
-                <StatusBadge key={`customer-${payment.id}`} status={payment.status} />,
+                <span key={`customer-amt-${payment.id}`} data-sort={String(payment.amount ?? "")}>
+                  {formatCurrency(payment.amount)}
+                </span>,
+                <StatusBadge
+                  key={`customer-${payment.id}`}
+                  status={payment.status}
+                  data-sort={payment.status || ""}
+                />,
                 <div key={`payment-actions-${payment.id}`} className="ta-table-actions">
                   <button
                     type="button"
@@ -211,6 +221,7 @@ function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
                   </button>
                 </div>,
               ])}
+              sortable
               emptyMessage="No payments found."
             />
             <PaginationBar
@@ -258,13 +269,12 @@ function CustomerPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
             value={form.amount}
             onChange={(value) => setForm((current) => ({ ...current, amount: value }))}
           />
-          <TextField
-            label="Payment Method"
+          <SelectField
+            label="Payment method"
             value={form.payment_method}
             required
-            onChange={(value) =>
-              setForm((current) => ({ ...current, payment_method: value }))
-            }
+            onChange={(value) => setForm((current) => ({ ...current, payment_method: value }))}
+            options={paymentMethodFieldOptions(state.paymentModes, form.payment_method)}
           />
           <TextField
             label="Transaction Reference"

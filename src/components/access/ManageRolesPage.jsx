@@ -18,7 +18,7 @@ import {
 
 function ManageRolesPage({ token, apiRequest }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -233,6 +233,7 @@ function ManageRolesPage({ token, apiRequest }) {
                   </button>
                 </div>,
               ])}
+              sortable
               emptyMessage="No roles found."
             />
             <PaginationBar

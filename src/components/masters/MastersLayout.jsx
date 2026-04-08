@@ -6,7 +6,8 @@ function MastersLayout({ items }) {
   const location = useLocation();
 
   if (location.pathname === "/masters") {
-    return <Navigate to="/masters/destinations" replace />;
+    const first = items?.[0]?.to;
+    return <Navigate to={first || "/dashboard"} replace />;
   }
 
   return (

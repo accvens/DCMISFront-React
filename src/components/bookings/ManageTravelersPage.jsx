@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertMessage,
+  AutocompleteField,
   CardLoader,
   ConfirmDeleteModal,
   FormModal,
+  ListSearchInput,
   ManageCard,
   PaginationBar,
   SelectField,
@@ -11,7 +13,9 @@ import {
   SuccessModal,
   TextField,
   formatDateTime,
+  useDebouncedValue,
 } from "../access/AccessShared.jsx";
+import { buildPagedSearchUrl, CustomerAutocomplete } from "../customers/CustomersShared.jsx";
 
 function createEmptyTravelerForm() {
   return {
@@ -21,10 +25,10 @@ function createEmptyTravelerForm() {
     last_name: "",
     gender: "",
     dob: "",
-    nationality: "",
+    nationality_country_id: "",
     contact_number: "",
     email: "",
-    traveler_type: "",
+    traveler_type_id: "",
   };
 }
 
@@ -50,18 +54,37 @@ function validateTravelerForm(form) {
 
 function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pageData, setPageData] = useState(null);
-  const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState(createEmptyTravelerForm());
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
+  const [countries, setCountries] = useState([]);
+  const [travelerTypes, setTravelerTypes] = useState([]);
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput, 400);
+
+  const countryOptions = useMemo(
+    () => [
+      { value: "", label: "—" },
+      ...countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
+    ],
+    [countries],
+  );
+
+  const travelerTypeOptions = useMemo(
+    () => [
+      { value: "", label: "—" },
+      ...travelerTypes.map((t) => ({ value: String(t.id), label: t.name || `Type #${t.id}` })),
+    ],
+    [travelerTypes],
+  );
 
   useEffect(() => {
     document.title = "Manage Traveler | Travel Agency";
@@ -69,19 +92,43 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
 
   useEffect(() => {
     let active = true;
+    Promise.all([
+      apiRequest("/masters/countries/options", { token }),
+      apiRequest("/masters/traveler-types/options", { token }),
+    ])
+      .then(([co, tt]) => {
+        if (!active) {
+          return;
+        }
+        setCountries(Array.isArray(co) ? co : []);
+        setTravelerTypes(Array.isArray(tt) ? tt : []);
+      })
+      .catch(() => {
+        if (active) {
+          setCountries([]);
+          setTravelerTypes([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiRequest, token]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchInput]);
+
+  useEffect(() => {
+    let active = true;
     setLoading(true);
     setError("");
 
-    Promise.all([
-      apiRequest(`/travelers?page=${page}&page_size=${pageSize}`, { token }),
-      apiRequest("/customers?page=1&page_size=100", { token }),
-    ])
-      .then(([travelersResponse, customersResponse]) => {
+    apiRequest(buildPagedSearchUrl("/travelers", page, pageSize, debouncedSearch), { token })
+      .then((travelersResponse) => {
         if (!active) {
           return;
         }
         setPageData(travelersResponse);
-        setCustomers(customersResponse.items || []);
         setLoading(false);
       })
       .catch((requestError) => {
@@ -95,7 +142,7 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, refreshKey, token]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -118,10 +165,10 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
           last_name: form.last_name.trim() || null,
           gender: form.gender || null,
           dob: form.dob || null,
-          nationality: form.nationality.trim() || null,
+          nationality_country_id: form.nationality_country_id ? Number(form.nationality_country_id) : null,
           contact_number: form.contact_number.trim() || null,
           email: form.email.trim() || null,
-          traveler_type: form.traveler_type.trim() || null,
+          traveler_type_id: form.traveler_type_id ? Number(form.traveler_type_id) : null,
         },
       });
       setForm(createEmptyTravelerForm());
@@ -158,14 +205,19 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
       <ManageCard
         title="Manage Traveler"
         subtitle="Create and maintain traveler records linked to customers."
+        toolbarExtra={
+          <ListSearchInput
+            id="travelers-list-search"
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Search name, email, phone, nationality, traveler type..."
+          />
+        }
         actionLabel={canCreate ? "Add Traveler" : undefined}
         onAction={
           canCreate
             ? () => {
-                setForm({
-                  ...createEmptyTravelerForm(),
-                  customer_id: customers[0] ? String(customers[0].id) : "",
-                });
+                setForm(createEmptyTravelerForm());
                 setFormError("");
                 setModalOpen(true);
               }
@@ -181,10 +233,9 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
               rows={(pageData?.items || []).map((item) => [
                 `#${item.id}`,
                 `${item.first_name} ${item.last_name || ""}`.trim(),
-                (() => {
-                  const c = customers.find((customer) => String(customer.id) === String(item.customer_id));
-                  return c ? [c.first_name, c.last_name].filter(Boolean).join(" ") || c.customer_id : null;
-                })() || `Customer #${item.customer_id}`,
+                [item.customer_first_name, item.customer_last_name].filter(Boolean).join(" ").trim() ||
+                  item.customer_ref ||
+                  `Customer #${item.customer_id}`,
                 item.traveler_type || "-",
                 item.email || "-",
                 formatDateTime(item.created_at),
@@ -202,10 +253,12 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
                           last_name: item.last_name || "",
                           gender: item.gender || "",
                           dob: item.dob || "",
-                          nationality: item.nationality || "",
+                          nationality_country_id:
+                            item.nationality_country_id != null ? String(item.nationality_country_id) : "",
                           contact_number: item.contact_number || "",
                           email: item.email || "",
-                          traveler_type: item.traveler_type || "",
+                          traveler_type_id:
+                            item.traveler_type_id != null ? String(item.traveler_type_id) : "",
                         });
                         setFormError("");
                         setModalOpen(true);
@@ -240,6 +293,7 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
                   {!canUpdate && !canDelete ? "-" : null}
                 </div>,
               ])}
+              sortable
               emptyMessage="No travelers found."
             />
             <PaginationBar
@@ -269,15 +323,13 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
       >
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
-          <SelectField
+          <CustomerAutocomplete
             label="Customer"
             value={form.customer_id}
             required
             onChange={(value) => setForm((current) => ({ ...current, customer_id: value }))}
-            options={customers.map((item) => ({
-              value: String(item.id),
-              label: [item.first_name, item.last_name].filter(Boolean).join(" ") || item.customer_id || item.email || "Customer",
-            }))}
+            apiRequest={apiRequest}
+            token={token}
           />
           <TextField
             label="First Name"
@@ -308,10 +360,12 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
             value={form.dob}
             onChange={(value) => setForm((current) => ({ ...current, dob: value }))}
           />
-          <TextField
-            label="Nationality"
-            value={form.nationality}
-            onChange={(value) => setForm((current) => ({ ...current, nationality: value }))}
+          <AutocompleteField
+            label="Nationality (country)"
+            value={form.nationality_country_id}
+            placeholder="Type to search countries…"
+            onChange={(value) => setForm((current) => ({ ...current, nationality_country_id: value }))}
+            options={countryOptions}
           />
           <TextField
             label="Contact Number"
@@ -324,10 +378,12 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
             value={form.email}
             onChange={(value) => setForm((current) => ({ ...current, email: value }))}
           />
-          <TextField
+          <AutocompleteField
             label="Traveler Type"
-            value={form.traveler_type}
-            onChange={(value) => setForm((current) => ({ ...current, traveler_type: value }))}
+            value={form.traveler_type_id}
+            placeholder="Type to search types…"
+            onChange={(value) => setForm((current) => ({ ...current, traveler_type_id: value }))}
+            options={travelerTypeOptions}
           />
         </div>
       </FormModal>

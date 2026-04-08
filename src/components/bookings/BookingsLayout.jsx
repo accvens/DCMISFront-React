@@ -9,6 +9,14 @@ function BookingsLayout({ items }) {
     return <Navigate to="/bookings/list" replace />;
   }
 
+  const hideListChrome =
+    location.pathname === "/bookings/create" ||
+    location.pathname.startsWith("/bookings/edit/");
+
+  if (hideListChrome) {
+    return <Outlet />;
+  }
+
   return (
     <>
       <AccessPageHeader

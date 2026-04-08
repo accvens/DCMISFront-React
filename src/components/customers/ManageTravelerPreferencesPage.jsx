@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertMessage,
   CardLoader,
   ConfirmDeleteModal,
   FormModal,
+  ListSearchInput,
   ManageCard,
   PaginationBar,
-  SelectField,
   SimpleTable,
   SuccessModal,
   TextField,
   formatDateTime,
+  useDebouncedValue,
 } from "../access/AccessShared.jsx";
+import { buildPagedSearchUrl, CustomerAutocomplete } from "./CustomersShared.jsx";
 
 function createEmptyPreferenceForm() {
   return {
@@ -33,7 +35,7 @@ function validatePreferenceForm(form) {
 
 function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,10 +47,16 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput, 400);
 
   useEffect(() => {
     document.title = "Traveler Preferences | Travel Agency";
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchInput]);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +64,7 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
     setError("");
 
     Promise.all([
-      apiRequest(`/travel-preferences?page=${page}&page_size=${pageSize}`, { token }),
+      apiRequest(buildPagedSearchUrl("/travel-preferences", page, pageSize, debouncedSearch), { token }),
       // Backend pagination validates page_size <= 100
       apiRequest("/customers?page=1&page_size=100", { token }),
     ])
@@ -75,20 +83,7 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, refreshKey, token]);
-
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        value: String(c.id),
-        label:
-          [c.first_name, c.last_name].filter(Boolean).join(" ") ||
-          c.customer_id ||
-          c.email ||
-          `Customer #${c.id}`,
-      })),
-    [customers],
-  );
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
 
   function resolveCustomerLabel(customerId) {
     const c = customers.find((item) => String(item.id) === String(customerId));
@@ -153,14 +148,19 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
       <ManageCard
         title="Traveler Preferences"
         subtitle="Store travel preference settings linked to customers."
+        toolbarExtra={
+          <ListSearchInput
+            id="travel-preferences-list-search"
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Search customer, meal, seat, hotel, special request..."
+          />
+        }
         actionLabel={canCreate ? "Add Preference" : undefined}
         onAction={
           canCreate
             ? () => {
-                setForm({
-                  ...createEmptyPreferenceForm(),
-                  customer_id: customerOptions[0]?.value || "",
-                });
+                setForm(createEmptyPreferenceForm());
                 setFormError("");
                 setModalOpen(true);
               }
@@ -229,6 +229,7 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
                   {!canUpdate && !canDelete ? "-" : null}
                 </div>,
               ])}
+              sortable
               emptyMessage="No preferences found."
             />
             <PaginationBar
@@ -259,12 +260,13 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
       >
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
-          <SelectField
+          <CustomerAutocomplete
             label="Customer"
             value={form.customer_id}
             required
             onChange={(value) => setForm((current) => ({ ...current, customer_id: value }))}
-            options={customerOptions}
+            apiRequest={apiRequest}
+            token={token}
           />
           <TextField
             label="Meal Preference"

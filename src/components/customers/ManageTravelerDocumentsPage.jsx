@@ -1,59 +1,124 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertMessage,
+  AutocompleteField,
   CardLoader,
   ConfirmDeleteModal,
+  FileField,
   FormModal,
+  ListSearchInput,
   ManageCard,
   PaginationBar,
-  SelectField,
   SimpleTable,
   SuccessModal,
-  TextField,
   formatDateTime,
+  useDebouncedValue,
 } from "../access/AccessShared.jsx";
+import {
+  buildPagedSearchUrl,
+  CustomerAutocomplete,
+  TravelerAutocomplete,
+} from "./CustomersShared.jsx";
+
+const TRAVELER_DOC_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,application/pdf";
+
+function documentAssetHref(filePath) {
+  if (!filePath) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(filePath)) {
+    return filePath;
+  }
+  const path = filePath.startsWith("/") ? filePath : `/${filePath}`;
+  if (import.meta.env.DEV) {
+    return path;
+  }
+  const envBase = import.meta.env.VITE_API_BASE_URL;
+  if (envBase && /^https?:\/\//i.test(envBase)) {
+    try {
+      const origin = new URL(String(envBase).replace(/\/+$/, "")).origin;
+      return `${origin}${path}`;
+    } catch {
+      /* fall through */
+    }
+  }
+  return `http://127.0.0.1:8000${path}`;
+}
+
+function documentFileBasename(filePath) {
+  if (!filePath) {
+    return "";
+  }
+  const clean = String(filePath).split("?")[0];
+  const parts = clean.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts[parts.length - 1] || "document";
+}
+
+/** Suggested filename for Content-Disposition-style download (type + id + original extension). */
+function documentDownloadFilename(item) {
+  const extMatch = documentFileBasename(item.file_path).match(/(\.[^./\\]+)$/i);
+  const ext = extMatch ? extMatch[1].toLowerCase() : "";
+  const typePart =
+    String(item.document_type || "document")
+      .replace(/[^\w\s.-]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 80) || "document";
+  return `${typePart}_${item.id}${ext}`;
+}
 
 function createEmptyDocumentForm() {
   return {
     id: "",
+    customer_id: "",
     traveler_id: "",
-    document_type: "",
-    file_path: "",
+    document_type_id: "",
+    file: null,
+    existingFilePath: "",
   };
 }
 
-function validateDocumentForm(form) {
+function validateDocumentForm(form, isEditing) {
   if (!form.traveler_id) {
     return "Traveler is required.";
   }
-  if (!String(form.document_type || "").trim()) {
+  if (!form.document_type_id) {
     return "Document type is required.";
   }
-  if (!String(form.file_path || "").trim()) {
-    return "File path is required.";
+  if (!isEditing && !form.file) {
+    return "Please choose a file to upload.";
+  }
+  if (isEditing && !form.file && !String(form.existingFilePath || "").trim()) {
+    return "Choose a new file or keep the existing document.";
   }
   return "";
 }
 
 function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, canDelete }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pageData, setPageData] = useState(null);
   const [travelers, setTravelers] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  const [documentTypes, setDocumentTypes] = useState([]);
   const [form, setForm] = useState(createEmptyDocumentForm());
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [uploadFieldKey, setUploadFieldKey] = useState(0);
   const [successModal, setSuccessModal] = useState(null);
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput, 400);
 
   useEffect(() => {
     document.title = "Traveler Documents | Travel Agency";
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchInput]);
 
   useEffect(() => {
     let active = true;
@@ -61,16 +126,16 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
     setError("");
 
     Promise.all([
-      apiRequest(`/traveler-documents?page=${page}&page_size=${pageSize}`, { token }),
+      apiRequest(buildPagedSearchUrl("/traveler-documents", page, pageSize, debouncedSearch), { token }),
       // Backend pagination validates page_size <= 100
       apiRequest("/travelers?page=1&page_size=100", { token }),
-      apiRequest("/customers?page=1&page_size=100", { token }),
+      apiRequest("/traveler-document-types", { token }),
     ])
-      .then(([docsResponse, travelersResponse, customersResponse]) => {
+      .then(([docsResponse, travelersResponse, typesResponse]) => {
         if (!active) return;
         setPageData(docsResponse);
         setTravelers(travelersResponse.items || []);
-        setCustomers(customersResponse.items || []);
+        setDocumentTypes(Array.isArray(typesResponse) ? typesResponse : []);
         setLoading(false);
       })
       .catch((requestError) => {
@@ -82,21 +147,16 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, refreshKey, token]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
 
-  const travelerOptions = useMemo(() => {
-    const customerById = new Map(customers.map((c) => [String(c.id), c]));
-    return travelers.map((t) => {
-      const customer = customerById.get(String(t.customer_id));
-      const customerLabel = customer
-        ? [customer.first_name, customer.last_name].filter(Boolean).join(" ") || customer.customer_id
-        : `Customer #${t.customer_id}`;
-      return {
+  const documentTypeOptions = useMemo(
+    () =>
+      documentTypes.map((t) => ({
         value: String(t.id),
-        label: `${[t.first_name, t.last_name].filter(Boolean).join(" ") || `Traveler #${t.id}`} — ${customerLabel}`,
-      };
-    });
-  }, [customers, travelers]);
+        label: t.name || `Type #${t.id}`,
+      })),
+    [documentTypes],
+  );
 
   function resolveTravelerLabel(travelerId) {
     const t = travelers.find((item) => String(item.id) === String(travelerId));
@@ -107,7 +167,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
-    const validationError = validateDocumentForm(form);
+    const validationError = validateDocumentForm(form, Boolean(form.id));
     if (validationError) {
       setFormError(validationError);
       return;
@@ -116,14 +176,17 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
     const isEditing = Boolean(form.id);
 
     try {
+      const formData = new FormData();
+      formData.set("traveler_id", String(Number(form.traveler_id)));
+      formData.set("document_type_id", String(Number(form.document_type_id)));
+      if (form.file) {
+        formData.set("file", form.file);
+      }
+
       await apiRequest(form.id ? `/traveler-documents/${form.id}` : "/traveler-documents", {
         method: form.id ? "PATCH" : "POST",
         token,
-        body: {
-          traveler_id: Number(form.traveler_id),
-          document_type: form.document_type.trim(),
-          file_path: form.file_path.trim(),
-        },
+        body: formData,
       });
       setForm(createEmptyDocumentForm());
       setModalOpen(false);
@@ -158,14 +221,25 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Traveler Documents"
-        subtitle="Store document records linked to travelers (file path is stored)."
+        subtitle="Upload documents linked to travelers (PDF, images, Word)."
+        toolbarExtra={
+          <ListSearchInput
+            id="traveler-documents-list-search"
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Search traveler, customer, document type, file..."
+          />
+        }
         actionLabel={canCreate ? "Add Document" : undefined}
         onAction={
           canCreate
             ? () => {
+                setUploadFieldKey((k) => k + 1);
                 setForm({
                   ...createEmptyDocumentForm(),
-                  traveler_id: travelerOptions[0]?.value || "",
+                  document_type_id: documentTypeOptions[0]?.value || "",
+                  file: null,
+                  existingFilePath: "",
                 });
                 setFormError("");
                 setModalOpen(true);
@@ -178,12 +252,38 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
         ) : (
           <>
             <SimpleTable
-              columns={["ID", "Traveler", "Type", "File Path", "Uploaded", "Actions"]}
+              columns={["ID", "Traveler", "Type", "File", "Uploaded", "Actions"]}
               rows={(pageData?.items || []).map((item) => [
                 `#${item.id}`,
                 resolveTravelerLabel(item.traveler_id),
                 item.document_type || "-",
-                item.file_path || "-",
+                item.file_path ? (
+                  <div
+                    key={`doc-file-${item.id}`}
+                    className="d-flex flex-wrap gap-2 align-items-center"
+                  >
+                    <a
+                      href={documentAssetHref(item.file_path)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-break"
+                    >
+                      Open
+                    </a>
+                    <span className="text-muted" aria-hidden="true">
+                      |
+                    </span>
+                    <a
+                      href={documentAssetHref(item.file_path)}
+                      download={documentDownloadFilename(item)}
+                      className="text-break"
+                    >
+                      Download
+                    </a>
+                  </div>
+                ) : (
+                  "-"
+                ),
                 formatDateTime(item.upload_date),
                 <div key={`doc-actions-${item.id}`} className="ta-table-actions">
                   {canUpdate ? (
@@ -192,14 +292,31 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
                       className="btn btn-icon btn-soft-primary btn-sm"
                       aria-label="Edit document"
                       onClick={() => {
-                        setForm({
-                          id: String(item.id),
-                          traveler_id: String(item.traveler_id || ""),
-                          document_type: item.document_type || "",
-                          file_path: item.file_path || "",
-                        });
-                        setFormError("");
-                        setModalOpen(true);
+                        setUploadFieldKey((k) => k + 1);
+                        const t = travelers.find((tr) => String(tr.id) === String(item.traveler_id));
+                        const open = (customerId) => {
+                          setForm({
+                            id: String(item.id),
+                            customer_id: customerId,
+                            traveler_id: String(item.traveler_id || ""),
+                            document_type_id: String(item.document_type_id ?? ""),
+                            file: null,
+                            existingFilePath: item.file_path || "",
+                          });
+                          setFormError("");
+                          setModalOpen(true);
+                        };
+                        if (t) {
+                          open(String(t.customer_id || ""));
+                          return;
+                        }
+                        apiRequest(`/travelers/${item.traveler_id}`, { token })
+                          .then((trow) => {
+                            open(trow?.customer_id != null ? String(trow.customer_id) : "");
+                          })
+                          .catch(() => {
+                            open("");
+                          });
                       }}
                     >
                       <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
@@ -231,6 +348,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
                   {!canUpdate && !canDelete ? "-" : null}
                 </div>,
               ])}
+              sortable
               emptyMessage="No traveler documents found."
             />
             <PaginationBar
@@ -261,24 +379,74 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
       >
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
-          <SelectField
+          <CustomerAutocomplete
+            label="Customer"
+            value={form.customer_id}
+            required
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                customer_id: value,
+                traveler_id: String(value) === String(current.customer_id) ? current.traveler_id : "",
+              }))
+            }
+            apiRequest={apiRequest}
+            token={token}
+          />
+          <TravelerAutocomplete
             label="Traveler"
             value={form.traveler_id}
             required
+            disabled={!String(form.customer_id || "").trim()}
+            placeholder={String(form.customer_id || "").trim() ? undefined : "Select a customer first"}
+            customerIdFilter={form.customer_id}
             onChange={(value) => setForm((current) => ({ ...current, traveler_id: value }))}
-            options={travelerOptions}
+            apiRequest={apiRequest}
+            token={token}
           />
-          <TextField
+          <AutocompleteField
             label="Document Type"
-            value={form.document_type}
+            value={form.document_type_id}
             required
-            onChange={(value) => setForm((current) => ({ ...current, document_type: value }))}
+            placeholder="Type to search document types…"
+            onChange={(value) => setForm((current) => ({ ...current, document_type_id: value }))}
+            options={documentTypeOptions}
           />
-          <TextField
-            label="File Path"
-            value={form.file_path}
-            required
-            onChange={(value) => setForm((current) => ({ ...current, file_path: value }))}
+          {form.id && form.existingFilePath ? (
+            <div className="col-12 col-md-6">
+              <label className="form-label">Current file</label>
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <a
+                  href={documentAssetHref(form.existingFilePath)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm btn-outline-primary"
+                >
+                  Open
+                </a>
+                <a
+                  href={documentAssetHref(form.existingFilePath)}
+                  download={documentDownloadFilename({
+                    id: form.id,
+                    document_type:
+                      documentTypeOptions.find((o) => o.value === String(form.document_type_id))
+                        ?.label || "",
+                    file_path: form.existingFilePath,
+                  })}
+                  className="btn btn-sm btn-outline-secondary"
+                >
+                  Download
+                </a>
+                <span className="text-muted small">Upload a new file below to replace it.</span>
+              </div>
+            </div>
+          ) : null}
+          <FileField
+            label={form.id ? "Replace file" : "Document file"}
+            accept={TRAVELER_DOC_ACCEPT}
+            required={!form.id}
+            inputKey={`doc-upload-${uploadFieldKey}`}
+            onChange={(file) => setForm((current) => ({ ...current, file }))}
           />
         </div>
       </FormModal>

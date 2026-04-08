@@ -27,7 +27,7 @@ export function PaymentsSubmenu() {
   );
 }
 
-export function StatusBadge({ status }) {
+export function StatusBadge({ status, ...rest }) {
   let className = "bg-info-subtle text-info";
   const normalized = (status || "Unknown").toLowerCase();
 
@@ -43,7 +43,11 @@ export function StatusBadge({ status }) {
     className = "bg-danger-subtle text-danger";
   }
 
-  return <span className={`badge rounded-pill ${className} ta-status-badge`}>{status || "Unknown"}</span>;
+  return (
+    <span className={`badge rounded-pill ${className} ta-status-badge`} {...rest}>
+      {status || "Unknown"}
+    </span>
+  );
 }
 
 export function createMap(items, key) {
