@@ -15,11 +15,6 @@ import {
   useDebouncedValue,
 } from "../access/AccessShared.jsx";
 import { buildPagedSearchUrl, createEmptyCustomerForm, validateCustomerForm } from "./CustomersShared.jsx";
-import {
-  createBookingFormFromBooking,
-  formatCurrency,
-  openProformaInvoicePrintWindow,
-} from "../bookings/BookingsShared.jsx";
 
 function ManageCustomersPage({
   token,
@@ -27,7 +22,6 @@ function ManageCustomersPage({
   canCreate,
   canUpdate,
   canDelete,
-  canAccessBookings = false,
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
@@ -45,11 +39,6 @@ function ManageCustomersPage({
   const [countries, setCountries] = useState([]);
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
-  const [proformaPickerOpen, setProformaPickerOpen] = useState(false);
-  const [proformaPickerOptions, setProformaPickerOptions] = useState([]);
-  const [proformaPickerBookingId, setProformaPickerBookingId] = useState("");
-  const [proformaBusy, setProformaBusy] = useState(false);
-  const [proformaHint, setProformaHint] = useState("");
 
   const countryOptions = useMemo(
     () => [
@@ -153,74 +142,6 @@ function ManageCustomersPage({
     }
   }
 
-  async function printProformaForBooking(bookingId) {
-    const [booking, productsRes, destinationsRes] = await Promise.all([
-      apiRequest(`/bookings/${bookingId}`, { token }),
-      apiRequest("/products?page=1&page_size=500", { token }),
-      apiRequest("/destinations?page=1&page_size=200", { token }),
-    ]);
-    const products = productsRes.items || [];
-    const destinations = destinationsRes.items || [];
-    const formFromBooking = createBookingFormFromBooking(booking, { catalogueProducts: products });
-    openProformaInvoicePrintWindow(formFromBooking, { customers: [form], destinations, products }, booking.id);
-  }
-
-  async function handleProformaInvoiceClick() {
-    if (!form.id) {
-      return;
-    }
-    setProformaHint("");
-    setFormError("");
-    setProformaBusy(true);
-    try {
-      const res = await apiRequest(
-        `/bookings?page=1&page_size=100&customer_id=${encodeURIComponent(form.id)}`,
-        { token },
-      );
-      const items = res?.items || [];
-      if (items.length === 0) {
-        setProformaHint(
-          "This customer has no bookings yet. Create a booking under Bookings, then print the proforma from here or while editing the booking.",
-        );
-        return;
-      }
-      const sorted = [...items].sort((a, b) => Number(b.id) - Number(a.id));
-      if (sorted.length === 1) {
-        await printProformaForBooking(sorted[0].id);
-        return;
-      }
-      setProformaPickerOptions(
-        sorted.map((b) => ({
-          value: String(b.id),
-          label: `#${b.id}${b.drc_no ? ` · ${b.drc_no}` : ""} · ${b.travel_start_date || "—"} · ${formatCurrency(b.total_amount)}`,
-        })),
-      );
-      setProformaPickerBookingId(String(sorted[0].id));
-      setProformaPickerOpen(true);
-    } catch (requestError) {
-      setFormError(requestError.message || "Unable to load bookings for this customer.");
-    } finally {
-      setProformaBusy(false);
-    }
-  }
-
-  async function handleProformaPickerSubmit(event) {
-    event.preventDefault();
-    if (!proformaPickerBookingId) {
-      return;
-    }
-    setProformaBusy(true);
-    setFormError("");
-    try {
-      await printProformaForBooking(Number(proformaPickerBookingId));
-      setProformaPickerOpen(false);
-    } catch (requestError) {
-      setFormError(requestError.message || "Unable to open proforma invoice.");
-    } finally {
-      setProformaBusy(false);
-    }
-  }
-
   async function handleDelete(customerId) {
     const id = customerId ?? deleteIdRef.current;
     if (id == null || id === "") {
@@ -265,7 +186,6 @@ function ManageCustomersPage({
             ? () => {
                 setForm(createEmptyCustomerForm());
                 setFormError("");
-                setProformaHint("");
                 setModalOpen(true);
               }
             : undefined
@@ -307,7 +227,6 @@ function ManageCustomersPage({
                           country_id: item.country_id != null ? String(item.country_id) : "",
                         });
                         setFormError("");
-                        setProformaHint("");
                         setModalOpen(true);
                       }}
                     >
@@ -367,7 +286,6 @@ function ManageCustomersPage({
           setModalOpen(false);
           setForm(createEmptyCustomerForm());
           setFormError("");
-          setProformaHint("");
         }}
         onSubmit={handleSubmit}
       >
@@ -377,19 +295,6 @@ function ManageCustomersPage({
             <div className="col-12">
               <label className="form-label">Customer ID</label>
               <p className="form-control-plaintext text-muted mb-0">{form.customer_id}</p>
-            </div>
-          ) : null}
-          {form.id && canAccessBookings ? (
-            <div className="col-12">
-              <button
-                type="button"
-                className="btn btn-outline-primary btn-sm"
-                disabled={proformaBusy}
-                onClick={handleProformaInvoiceClick}
-              >
-                {proformaBusy && !proformaPickerOpen ? "Loading…" : "Print proforma invoice"}
-              </button>
-              {proformaHint ? <p className="small text-muted mt-2 mb-0">{proformaHint}</p> : null}
             </div>
           ) : null}
           <TextField
@@ -450,29 +355,6 @@ function ManageCustomersPage({
             />
           </div>
         </div>
-      </FormModal>
-      <FormModal
-        open={proformaPickerOpen}
-        title="Print proforma invoice"
-        saveLabel="Print"
-        saving={proformaBusy}
-        onCancel={() => {
-          setProformaPickerOpen(false);
-          setProformaPickerOptions([]);
-          setProformaPickerBookingId("");
-        }}
-        onSubmit={handleProformaPickerSubmit}
-      >
-        <p className="small text-muted mb-3">
-          Choose which booking to use for the proforma (product lines, payments, and totals come from that booking).
-        </p>
-        <SelectField
-          label="Booking"
-          value={proformaPickerBookingId}
-          required
-          onChange={setProformaPickerBookingId}
-          options={proformaPickerOptions}
-        />
       </FormModal>
       <ConfirmDeleteModal
         open={Boolean(deleteTarget)}

@@ -46,6 +46,47 @@ body {
 }
 
 /* Long alerts: contain height and scroll instead of overflowing the layout */
+.ta-bookings-status-cell .btn-group .btn {
+  min-width: 4.75rem;
+  font-size: 0.75rem;
+}
+
+.ta-bookings-filters-bar {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--ta-form-border-subtle);
+  border-radius: 0.5rem;
+  background: rgba(var(--bs-primary-rgb), 0.045);
+}
+
+.ta-bookings-filters-bar__title {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+
+.ta-bookings-filter-field .form-label {
+  font-size: 0.8125rem;
+}
+
+.ta-bookings-filters-bar .form-control[type="date"] {
+  min-width: 10.5rem;
+}
+
+.ta-bookings-filters-search-wrap .ta-list-search {
+  max-width: none;
+  width: 100%;
+}
+
+@media (min-width: 992px) {
+  .ta-bookings-filters-search-wrap {
+    max-width: 26rem;
+    margin-left: auto;
+  }
+}
+
 .ta-alert-scrollable {
   max-height: 8rem;
   overflow-x: hidden;
@@ -83,6 +124,16 @@ body {
     0 10px 40px rgba(15, 23, 42, 0.12),
     0 2px 8px rgba(15, 23, 42, 0.06);
   animation: ta-toast-in 0.28s ease-out;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 0.38s ease-in,
+    transform 0.38s ease-in;
+}
+
+.ta-toast.ta-toast--exiting {
+  opacity: 0;
+  transform: translateX(12px);
 }
 
 .ta-toast__alert {
@@ -104,6 +155,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ta-toast {
     animation: none;
+  }
+
+  .ta-toast.ta-toast--exiting {
+    transition: none;
+    opacity: 0;
   }
 }
 
@@ -1189,6 +1245,12 @@ input[type="file"].form-control {
   gap: 0.2rem;
 }
 
+.ta-booking-pay-progress__item--order-total {
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.1rem;
+  border-bottom: 1px solid rgba(10, 66, 81, 0.12);
+}
+
 .ta-booking-pay-progress__head {
   display: flex;
   align-items: baseline;
@@ -1481,11 +1543,11 @@ input[type="file"].form-control {
   color: #432874;
 }
 
-.ta-product-details--embedded {
+.ta-booking-vendor-products--embedded {
   box-shadow: none !important;
 }
 
-.ta-product-details--embedded .card-body {
+.ta-booking-vendor-products--embedded .card-body {
   padding-top: 1rem;
 }
 
@@ -1518,6 +1580,101 @@ input[type="file"].form-control {
   .ta-order-entry .ta-order-table-wrap.ta-order-vendor-grid-wrap {
     overflow-x: auto;
   }
+
+  /* Customer payment + summary sit side-by-side: keep horizontal scroll so rows never overlap the summary */
+  .ta-order-entry .ta-order-table-wrap.ta-order-custpay-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Customer payment (Sales PI): comfortable selects + receipt no width */
+.ta-custpay-table.ta-custpay-table {
+  table-layout: auto;
+}
+
+.ta-custpay-table th.ta-custpay-col-mode,
+.ta-custpay-table td.ta-custpay-col-mode {
+  min-width: 10.5rem;
+}
+
+.ta-custpay-table th.ta-custpay-col-status,
+.ta-custpay-table td.ta-custpay-col-status {
+  min-width: 7.5rem;
+}
+
+.ta-custpay-table th.ta-custpay-col-sale-pi,
+.ta-custpay-table td.ta-custpay-col-sale-pi {
+  min-width: 6.5rem;
+  vertical-align: middle;
+}
+
+.ta-custpay-table .ta-custpay-sale-pi-readonly {
+  user-select: all;
+}
+
+.ta-custpay-table th.ta-custpay-col-pi,
+.ta-custpay-table td.ta-custpay-col-pi {
+  min-width: 9.5rem;
+}
+
+.ta-custpay-table th.ta-custpay-col-amount,
+.ta-custpay-table td.ta-custpay-col-amount {
+  min-width: 6.5rem;
+}
+
+.ta-custpay-table.ta-custpay-table tfoot.ta-custpay-table-tfoot td {
+  vertical-align: middle;
+  border-top-width: 2px;
+}
+
+.ta-custpay-table.ta-custpay-table tfoot .ta-custpay-totals-row td {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+.ta-custpay-summary-panel {
+  border: 1px solid rgba(10, 66, 81, 0.1);
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(10, 66, 81, 0.06);
+}
+
+.ta-custpay-summary-panel .ta-custpay-summary-metric {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ta-custpay-summary-panel .ta-custpay-summary-metric:last-of-type {
+  border-bottom: none;
+}
+
+.ta-custpay-summary-panel .ta-custpay-summary-metric--highlight {
+  background: linear-gradient(180deg, rgba(10, 66, 81, 0.04), rgba(10, 66, 81, 0.02));
+}
+
+.ta-custpay-summary-panel .ta-custpay-summary-metric--alert {
+  border-left: 3px solid #fd7e14;
+  background: rgba(253, 126, 20, 0.06);
+}
+
+.ta-custpay-summary-head .small {
+  letter-spacing: 0.06em;
+}
+
+/* Customer payment: highlight receipt / banking columns (UTR → mode) */
+.ta-custpay-table th.ta-custpay-received-head,
+.ta-custpay-table td.ta-custpay-received-cell {
+  background: rgba(25, 135, 84, 0.07);
+}
+
+.ta-custpay-table th.ta-custpay-received-start,
+.ta-custpay-table td.ta-custpay-received-start {
+  box-shadow: inset 3px 0 0 rgba(25, 135, 84, 0.28);
+}
+
+.ta-custpay-col-received {
+  min-width: 9.5rem;
 }
 
 .ta-order-table tbody td {

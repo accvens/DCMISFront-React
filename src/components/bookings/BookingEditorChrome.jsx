@@ -52,8 +52,9 @@ export function BookingEditorChrome({ mode, bookingId, children }) {
  * Row below the wizard step content: Previous | Next + Save (inside &lt;form&gt;).
  */
 export function BookingWizardToolbar({
-  submitting,
-  submitLabel = "Save Booking",
+  /** When true, primary submit is in flight (shows `savingLabel` on the submit button). */
+  submitting = false,
+  submitLabel = "Save booking",
   savingLabel,
   onPrevious,
   onNext,

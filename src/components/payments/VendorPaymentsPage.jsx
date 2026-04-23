@@ -17,8 +17,10 @@ import {
   createEmptyVendorPaymentForm,
   createMap,
   formatCurrency,
+  parseAmountNumeric,
   validateVendorPaymentForm,
 } from "./PaymentsShared.jsx";
+import { normalizePaymentLineStatusForForm } from "../bookings/BookingsShared.jsx";
 
 function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
   const [page, setPage] = useState(1);
@@ -107,7 +109,7 @@ function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
         body: {
           booking_id: Number(form.booking_id),
           vendor_id: Number(form.vendor_id),
-          amount: Number(form.amount),
+          amount: parseAmountNumeric(form.amount),
           payment_method: form.payment_method.trim(),
           payment_date: form.payment_date || null,
           status: form.status,
@@ -199,7 +201,7 @@ function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
                         amount: String(payment.amount),
                         payment_method: payment.payment_method,
                         payment_date: payment.payment_date || "",
-                        status: payment.status,
+                        status: normalizePaymentLineStatusForForm(payment.status),
                       });
                       setFormError("");
                       setModalOpen(true);
@@ -281,9 +283,7 @@ function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
           />
           <TextField
             label="Amount"
-            type="number"
-            step="0.01"
-            min="0.01"
+            formatAmountOnBlur
             required
             value={form.amount}
             onChange={(value) => setForm((current) => ({ ...current, amount: value }))}

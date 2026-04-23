@@ -9,7 +9,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { AlertMessage, formatDate } from "./components/access/AccessShared.jsx";
+import { AlertMessage, FileField, formatDate, TextField } from "./components/access/AccessShared.jsx";
+import { formatCurrency, parseAmountNumeric } from "./formatAmount.js";
 import ManagePermissionsPage from "./components/access/ManagePermissionsPage.jsx";
 import ManageRolesPage from "./components/access/ManageRolesPage.jsx";
 import ManageUsersPage from "./components/access/ManageUsersPage.jsx";
@@ -18,10 +19,9 @@ import BookingsLayout from "./components/bookings/BookingsLayout.jsx";
 import BookingsListPage from "./components/bookings/BookingsListPage.jsx";
 import CreateBookingPage from "./components/bookings/CreateBookingPage.jsx";
 import EditBookingPage from "./components/bookings/EditBookingPage.jsx";
-import ManageDestinationsPage from "./components/bookings/ManageDestinationsPage.jsx";
 import ManagePaymentModesPage from "./components/bookings/ManagePaymentModesPage.jsx";
-import ManageProductDetailsPage from "./components/bookings/ManageProductDetailsPage.jsx";
 import ManageProductTypesPage from "./components/bookings/ManageProductTypesPage.jsx";
+import ManageVendorsPage from "./components/bookings/ManageVendorsPage.jsx";
 import ManageTravelersPage from "./components/bookings/ManageTravelersPage.jsx";
 import CustomersLayout from "./components/customers/CustomersLayout.jsx";
 import ManageCustomersPage from "./components/customers/ManageCustomersPage.jsx";
@@ -32,6 +32,7 @@ import ManageTravelerPreferencesPage from "./components/customers/ManageTraveler
 import MastersLayout from "./components/masters/MastersLayout.jsx";
 import ManageLookupMasterPage from "./components/masters/ManageLookupMasterPage.jsx";
 import NotFoundPage from "./components/NotFoundPage.jsx";
+import { normalizePaymentLineStatusForForm } from "./components/bookings/BookingsShared.jsx";
 import CustomerPaymentsPage from "./components/payments/CustomerPaymentsPage.jsx";
 import PaymentsLayout from "./components/payments/PaymentsLayout.jsx";
 import VendorPaymentsPage from "./components/payments/VendorPaymentsPage.jsx";
@@ -54,13 +55,7 @@ const API_ORIGIN = getApiOrigin(API_BASE);
 const TOKEN_KEY = "travel_agency_token";
 const USER_KEY = "travel_agency_user";
 
-const bookingStatusOptions = [
-  "Pending",
-  "Confirmed",
-  "In Progress",
-  "Cancelled",
-];
-const paymentStatusOptions = ["Pending", "Partial", "Paid"];
+const paymentStatusOptions = ["Pending", "Paid"];
 const SUPER_ADMIN_ROLE = "super admin";
 const BOOKING_AGENT_ROLE = "booking agent";
 const ACCOUNTANT_ROLE = "accountant";
@@ -106,7 +101,6 @@ function getUserCapabilities(user) {
   const isSuperAdmin = hasRole(user, SUPER_ADMIN_ROLE);
   const customer = getCrudCapability(user, "customer");
   const traveler = getCrudCapability(user, "traveler");
-  const destination = getCrudCapability(user, "destination");
   const paymentMode = getCrudCapability(user, "payment_mode");
   const productType = getCrudCapability(user, "product_type");
   const canAccessBookingsList =
@@ -117,19 +111,21 @@ function getUserCapabilities(user) {
   const canAccessBookings =
     canAccessBookingsList ||
     traveler.canAccess ||
-    destination.canAccess ||
     paymentMode.canAccess ||
     productType.canAccess;
   const canCreateBooking =
     isSuperAdmin ||
     hasRole(user, BOOKING_AGENT_ROLE) ||
     hasPermission(user, "create_booking");
+  /** Bookings list: set status to Closed (Completed). Granted via `close_booking` on roles (see migrations). */
+  const canCloseBooking = isSuperAdmin || hasPermission(user, "close_booking");
+  /** Bookings list: set status back to Open (Pending) after Closed. Granted via `reopen_booking` on roles. */
+  const canReopenBooking = isSuperAdmin || hasPermission(user, "reopen_booking");
   const canAccessPayments =
     isSuperAdmin || hasRole(user, ACCOUNTANT_ROLE) || hasPermission(user, "view_reports");
   const canAccessAccess =
     isSuperAdmin || hasPermission(user, "create_user") || hasPermission(user, "delete_user");
   const canAccessMasters =
-    destination.canAccess ||
     paymentMode.canAccess ||
     productType.canAccess ||
     traveler.canAccess ||
@@ -139,12 +135,13 @@ function getUserCapabilities(user) {
     isSuperAdmin,
     customer,
     traveler,
-    destination,
     paymentMode,
     productType,
     canAccessBookingsList,
     canAccessBookings,
     canCreateBooking,
+    canCloseBooking,
+    canReopenBooking,
     canAccessPayments,
     canAccessAccess,
     canAccessMasters,
@@ -271,11 +268,11 @@ function App() {
                     ...(capabilities.traveler.canAccess
                       ? [{ to: "/customers/visas", label: "Visa Details" }]
                       : []),
+                    ...(capabilities.customer.canAccess && capabilities.traveler.canAccess
+                      ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
+                      : []),
                     ...(capabilities.traveler.canAccess
                       ? [{ to: "/customers/documents", label: "Traveler Documents" }]
-                      : []),
-                    ...(capabilities.customer.canAccess
-                      ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
                       : []),
                   ]}
                 />
@@ -291,7 +288,6 @@ function App() {
                   canCreate={capabilities.customer.create}
                   canUpdate={capabilities.customer.update}
                   canDelete={capabilities.customer.delete}
-                  canAccessBookings={capabilities.canAccessBookingsList}
                 />
               }
             />
@@ -354,13 +350,15 @@ function App() {
             <Route
               path="preferences"
               element={
-                <RequireSectionAccess allowed={capabilities.customer.canAccess}>
+                <RequireSectionAccess
+                  allowed={capabilities.customer.canAccess && capabilities.traveler.canAccess}
+                >
                   <ManageTravelerPreferencesPage
                     token={token}
                     apiRequest={apiRequest}
-                    canCreate={capabilities.customer.create}
-                    canUpdate={capabilities.customer.update}
-                    canDelete={capabilities.customer.delete}
+                    canCreate={capabilities.customer.create || capabilities.traveler.create}
+                    canUpdate={capabilities.customer.update || capabilities.traveler.update}
+                    canDelete={capabilities.customer.delete || capabilities.traveler.delete}
                   />
                 </RequireSectionAccess>
               }
@@ -392,13 +390,8 @@ function App() {
                   <BookingsListPage
                     token={token}
                     apiRequest={apiRequest}
-                    bookingStatusOptions={bookingStatusOptions}
-                    canCreateCustomer={capabilities.customer.create}
-                    canCreateDestination={capabilities.destination.create}
-                    canCreateTraveler={capabilities.traveler.create}
-                    canCreateProductType={capabilities.productType.create}
-                    canCreateCatalogProduct={capabilities.productType.create}
-                    canCreateVendor={capabilities.productType.create}
+                    canCloseBooking={capabilities.canCloseBooking}
+                    canReopenBooking={capabilities.canReopenBooking}
                   />
                 </RequireSectionAccess>
               }
@@ -410,13 +403,9 @@ function App() {
                   <CreateBookingPage
                     token={token}
                     apiRequest={apiRequest}
-                    bookingStatusOptions={bookingStatusOptions}
                     canCreateCustomer={capabilities.customer.create}
-                    canCreateDestination={capabilities.destination.create}
                     canCreateTraveler={capabilities.traveler.create}
                     canCreateProductType={capabilities.productType.create}
-                    canCreateCatalogProduct={capabilities.productType.create}
-                    canCreateVendor={capabilities.productType.create}
                   />
                 </RequireSectionAccess>
               }
@@ -427,13 +416,21 @@ function App() {
                 <EditBookingPage
                   token={token}
                   apiRequest={apiRequest}
-                  bookingStatusOptions={bookingStatusOptions}
                   canCreateCustomer={capabilities.customer.create}
-                  canCreateDestination={capabilities.destination.create}
                   canCreateTraveler={capabilities.traveler.create}
                   canCreateProductType={capabilities.productType.create}
-                  canCreateCatalogProduct={capabilities.productType.create}
-                  canCreateVendor={capabilities.productType.create}
+                />
+              }
+            />
+            <Route
+              path=":bookingId/edit"
+              element={
+                <EditBookingPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  canCreateCustomer={capabilities.customer.create}
+                  canCreateTraveler={capabilities.traveler.create}
+                  canCreateProductType={capabilities.productType.create}
                 />
               }
             />
@@ -444,52 +441,28 @@ function App() {
               <RequireSectionAccess allowed={capabilities.canAccessMasters}>
                 <MastersLayout
                   items={[
-                    ...(capabilities.destination.canAccess
-                      ? [{ to: "/masters/destinations", label: "Destinations" }]
-                      : []),
-                    ...(capabilities.destination.canAccess ||
-                    capabilities.customer.canAccess ||
+                    ...(capabilities.customer.canAccess ||
                     capabilities.traveler.canAccess ||
                     capabilities.productType.canAccess
                       ? [{ to: "/masters/countries", label: "Countries" }]
                       : []),
                     ...(capabilities.productType.canAccess
-                      ? [{ to: "/masters/vendor-types", label: "Vendor Types" }]
+                      ? [{ to: "/masters/vendors", label: "Vendors" }]
                       : []),
                     ...(capabilities.traveler.canAccess
-                      ? [
-                          { to: "/masters/traveler-types", label: "Traveler Types" },
-                          { to: "/masters/visa-types", label: "Visa Types" },
-                        ]
+                      ? [{ to: "/masters/traveler-types", label: "Traveler Types" }]
                       : []),
                     ...(capabilities.paymentMode.canAccess
                       ? [{ to: "/masters/payment-modes", label: "Payment Modes" }]
                       : []),
                     ...(capabilities.productType.canAccess
-                      ? [
-                          { to: "/masters/product-types", label: "Product Types" },
-                          { to: "/masters/product-details", label: "Product Details" },
-                        ]
+                      ? [{ to: "/masters/product-types", label: "Manage Product" }]
                       : []),
                   ]}
                 />
               </RequireSectionAccess>
             }
           >
-            <Route
-              path="destinations"
-              element={
-                <RequireSectionAccess allowed={capabilities.destination.canAccess}>
-                  <ManageDestinationsPage
-                    token={token}
-                    apiRequest={apiRequest}
-                    canCreate={capabilities.destination.create}
-                    canUpdate={capabilities.destination.update}
-                    canDelete={capabilities.destination.delete}
-                  />
-                </RequireSectionAccess>
-              }
-            />
             <Route
               path="payment-modes"
               element={
@@ -519,25 +492,10 @@ function App() {
               }
             />
             <Route
-              path="product-details"
-              element={
-                <RequireSectionAccess allowed={capabilities.productType.canAccess}>
-                  <ManageProductDetailsPage
-                    token={token}
-                    apiRequest={apiRequest}
-                    canCreate={capabilities.productType.create}
-                    canUpdate={capabilities.productType.update}
-                    canDelete={capabilities.productType.delete}
-                  />
-                </RequireSectionAccess>
-              }
-            />
-            <Route
               path="countries"
               element={
                 <RequireSectionAccess
                   allowed={
-                    capabilities.destination.canAccess ||
                     capabilities.customer.canAccess ||
                     capabilities.traveler.canAccess ||
                     capabilities.productType.canAccess
@@ -549,23 +507,20 @@ function App() {
                     slug="countries"
                     title="Countries"
                     documentTitle="Countries | Master | Travel Agency"
-                    canCreate={capabilities.destination.create}
-                    canUpdate={capabilities.destination.update}
-                    canDelete={capabilities.destination.delete}
+                    canCreate={capabilities.productType.create}
+                    canUpdate={capabilities.productType.update}
+                    canDelete={capabilities.productType.delete}
                   />
                 </RequireSectionAccess>
               }
             />
             <Route
-              path="vendor-types"
+              path="vendors"
               element={
                 <RequireSectionAccess allowed={capabilities.productType.canAccess}>
-                  <ManageLookupMasterPage
+                  <ManageVendorsPage
                     token={token}
                     apiRequest={apiRequest}
-                    slug="vendor-types"
-                    title="Vendor Types"
-                    documentTitle="Vendor Types | Master | Travel Agency"
                     canCreate={capabilities.productType.create}
                     canUpdate={capabilities.productType.update}
                     canDelete={capabilities.productType.delete}
@@ -583,23 +538,6 @@ function App() {
                     slug="traveler-types"
                     title="Traveler Types"
                     documentTitle="Traveler Types | Master | Travel Agency"
-                    canCreate={capabilities.traveler.create}
-                    canUpdate={capabilities.traveler.update}
-                    canDelete={capabilities.traveler.delete}
-                  />
-                </RequireSectionAccess>
-              }
-            />
-            <Route
-              path="visa-types"
-              element={
-                <RequireSectionAccess allowed={capabilities.traveler.canAccess}>
-                  <ManageLookupMasterPage
-                    token={token}
-                    apiRequest={apiRequest}
-                    slug="visa-types"
-                    title="Visa Types"
-                    documentTitle="Visa Types | Master | Travel Agency"
                     canCreate={capabilities.traveler.create}
                     canUpdate={capabilities.traveler.update}
                     canDelete={capabilities.traveler.delete}
@@ -788,11 +726,11 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                       ...(capabilities.traveler.canAccess
                         ? [{ to: "/customers/visas", label: "Visa Details" }]
                         : []),
+                      ...(capabilities.customer.canAccess && capabilities.traveler.canAccess
+                        ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
+                        : []),
                       ...(capabilities.traveler.canAccess
                         ? [{ to: "/customers/documents", label: "Traveler Documents" }]
-                        : []),
-                      ...(capabilities.customer.canAccess
-                        ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
                         : []),
                     ]}
                   />
@@ -815,32 +753,22 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                       label="Master section"
                       activePrefix="/masters"
                       items={[
-                        ...(capabilities.destination.canAccess
-                          ? [{ to: "/masters/destinations", label: "Destinations" }]
-                          : []),
-                        ...(capabilities.destination.canAccess ||
-                        capabilities.customer.canAccess ||
+                        ...(capabilities.customer.canAccess ||
                         capabilities.traveler.canAccess ||
                         capabilities.productType.canAccess
                           ? [{ to: "/masters/countries", label: "Countries" }]
                           : []),
                         ...(capabilities.productType.canAccess
-                          ? [{ to: "/masters/vendor-types", label: "Vendor Types" }]
+                          ? [{ to: "/masters/vendors", label: "Vendors" }]
                           : []),
                         ...(capabilities.traveler.canAccess
-                          ? [
-                              { to: "/masters/traveler-types", label: "Traveler Types" },
-                              { to: "/masters/visa-types", label: "Visa Types" },
-                            ]
+                          ? [{ to: "/masters/traveler-types", label: "Traveler Types" }]
                           : []),
                         ...(capabilities.paymentMode.canAccess
                           ? [{ to: "/masters/payment-modes", label: "Payment Modes" }]
                           : []),
                         ...(capabilities.productType.canAccess
-                          ? [
-                              { to: "/masters/product-types", label: "Product Types" },
-                              { to: "/masters/product-details", label: "Product Details" },
-                            ]
+                          ? [{ to: "/masters/product-types", label: "Manage Product" }]
                           : []),
                       ]}
                     />
@@ -1121,6 +1049,7 @@ function DashboardPage({ token, user, capabilities }) {
     bookings: [],
     payments: [],
     vendorPayments: [],
+    customerTotal: 0,
   });
 
   useEffect(() => {
@@ -1141,8 +1070,11 @@ function DashboardPage({ token, user, capabilities }) {
       capabilities.canAccessPayments
         ? apiRequest("/vendor-payments?page=1&page_size=100", { token })
         : Promise.resolve({ items: [] }),
+      capabilities.customer.canAccess
+        ? apiRequest("/customers?page=1&page_size=1", { token })
+        : Promise.resolve({ total: 0 }),
     ])
-      .then(([bookings, payments, vendorPayments]) => {
+      .then(([bookings, payments, vendorPayments, customersPage]) => {
         if (!active) {
           return;
         }
@@ -1152,6 +1084,7 @@ function DashboardPage({ token, user, capabilities }) {
           bookings: bookings.items,
           payments: payments.items,
           vendorPayments: vendorPayments.items,
+          customerTotal: Number(customersPage.total ?? 0),
         });
       })
       .catch((requestError) => {
@@ -1168,14 +1101,19 @@ function DashboardPage({ token, user, capabilities }) {
     return () => {
       active = false;
     };
-  }, [capabilities.canAccessBookings, capabilities.canAccessPayments, token]);
+  }, [
+    capabilities.canAccessBookings,
+    capabilities.canAccessPayments,
+    capabilities.customer.canAccess,
+    token,
+  ]);
 
   const totalReceived = state.payments.reduce(
-    (sum, payment) => sum + Number(payment.amount || 0),
+    (sum, payment) => sum + parseAmountNumeric(payment.amount),
     0,
   );
   const totalVendorPaid = state.vendorPayments.reduce(
-    (sum, payment) => sum + Number(payment.amount || 0),
+    (sum, payment) => sum + parseAmountNumeric(payment.amount),
     0,
   );
   const pendingBookings = state.bookings.filter((booking) =>
@@ -1200,6 +1138,14 @@ function DashboardPage({ token, user, capabilities }) {
               actionTo="/profile"
               actionLabel="View profile"
             />
+            {capabilities.customer.canAccess ? (
+              <StatCard
+                label="Customers"
+                value={String(state.customerTotal)}
+                actionTo="/customers/list"
+                actionLabel="Manage customers"
+              />
+            ) : null}
             {capabilities.canAccessBookings ? (
               <StatCard
                 label="Total bookings"
@@ -1243,10 +1189,15 @@ function DashboardPage({ token, user, capabilities }) {
                         <div className="badge bg-warning-subtle text-warning ta-status-badge">
                           Pending: {pendingBookings}
                         </div>
+                        {capabilities.customer.canAccess ? (
+                          <NavLink to="/customers/list" className="btn btn-primary btn-sm">
+                            Customers
+                          </NavLink>
+                        ) : null}
                         <NavLink to="/bookings/create" className="btn btn-primary btn-sm">
                           Create booking
                         </NavLink>
-                        <NavLink to="/bookings/list" className="btn btn-outline-secondary btn-sm">
+                        <NavLink to="/bookings/list" className="btn btn-primary btn-sm">
                           Bookings list
                         </NavLink>
                       </div>
@@ -1285,7 +1236,7 @@ function DashboardPage({ token, user, capabilities }) {
                         </p>
                       </div>
                       <div className="d-flex flex-wrap gap-2">
-                        <NavLink to="/payments/vendor" className="btn btn-outline-secondary btn-sm">
+                        <NavLink to="/payments/vendor" className="btn btn-primary btn-sm">
                           Vendor payments
                         </NavLink>
                         <NavLink to="/payments/customer" className="btn btn-primary btn-sm">
@@ -1328,12 +1279,12 @@ function DashboardPage({ token, user, capabilities }) {
                         </NavLink>
                       ) : null}
                       {capabilities.traveler.canAccess ? (
-                        <NavLink to="/customers/travelers" className="btn btn-outline-primary btn-sm">
+                        <NavLink to="/customers/travelers" className="btn btn-primary btn-sm">
                           Travelers
                         </NavLink>
                       ) : null}
                       {capabilities.canAccessAccess ? (
-                        <NavLink to="/access/users" className="btn btn-outline-secondary btn-sm">
+                        <NavLink to="/access/users" className="btn btn-primary btn-sm">
                           Users &amp; access
                         </NavLink>
                       ) : null}
@@ -1444,7 +1395,7 @@ function PaymentsPage({ token }) {
           token,
           body: {
             booking_id: Number(paymentForm.booking_id),
-            amount: Number(paymentForm.amount),
+            amount: parseAmountNumeric(paymentForm.amount),
             payment_method: paymentForm.payment_method,
             transaction_reference: paymentForm.transaction_reference || null,
             payment_date: paymentForm.payment_date || null,
@@ -1477,7 +1428,7 @@ function PaymentsPage({ token }) {
           body: {
             booking_id: Number(vendorPaymentForm.booking_id),
             vendor_id: Number(vendorPaymentForm.vendor_id),
-            amount: Number(vendorPaymentForm.amount),
+            amount: parseAmountNumeric(vendorPaymentForm.amount),
             payment_method: vendorPaymentForm.payment_method,
             payment_date: vendorPaymentForm.payment_date || null,
             status: vendorPaymentForm.status,
@@ -1561,8 +1512,7 @@ function PaymentsPage({ token }) {
                   />
                   <TextField
                     label="Amount"
-                    type="number"
-                    step="0.01"
+                    formatAmountOnBlur
                     value={paymentForm.amount}
                     onChange={(value) =>
                       setPaymentForm((current) => ({ ...current, amount: value }))
@@ -1653,7 +1603,7 @@ function PaymentsPage({ token }) {
                               payment_method: payment.payment_method,
                               transaction_reference: payment.transaction_reference || "",
                               payment_date: payment.payment_date || "",
-                              status: payment.status,
+                              status: normalizePaymentLineStatusForForm(payment.status),
                             })
                           }
                         >
@@ -1744,8 +1694,7 @@ function PaymentsPage({ token }) {
                   />
                   <TextField
                     label="Amount"
-                    type="number"
-                    step="0.01"
+                    formatAmountOnBlur
                     value={vendorPaymentForm.amount}
                     onChange={(value) =>
                       setVendorPaymentForm((current) => ({ ...current, amount: value }))
@@ -1835,7 +1784,7 @@ function PaymentsPage({ token }) {
                               amount: String(payment.amount),
                               payment_method: payment.payment_method,
                               payment_date: payment.payment_date || "",
-                              status: payment.status,
+                              status: normalizePaymentLineStatusForForm(payment.status),
                             })
                           }
                         >
@@ -2486,20 +2435,6 @@ function CheckboxMultiField({ label, options, selectedValues, onToggle }) {
   );
 }
 
-function FileField({ label, onChange }) {
-  return (
-    <div className="col-md-6">
-      <label className="form-label">{label}</label>
-      <input
-        className="form-control"
-        type="file"
-        accept="image/*"
-        onChange={(event) => onChange(event.target.files?.[0] || null)}
-      />
-    </div>
-  );
-}
-
 function SelectField({ label, value, onChange, options }) {
   return (
     <div className="col-md-6">
@@ -2519,29 +2454,6 @@ function SelectField({ label, value, onChange, options }) {
           <option value="">No options</option>
         )}
       </select>
-    </div>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  step,
-  min,
-}) {
-  return (
-    <div className="col-md-6">
-      <label className="form-label">{label}</label>
-      <input
-        className="form-control"
-        type={type}
-        value={value}
-        step={step}
-        min={min}
-        onChange={(event) => onChange(event.target.value)}
-      />
     </div>
   );
 }
@@ -2741,14 +2653,6 @@ function createMap(items, key) {
   }, {});
 }
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
-}
-
 function getInitials(value) {
   const words = String(value || "")
     .trim()
@@ -2819,7 +2723,16 @@ function getStoredToken() {
 
 function getStoredUser() {
   const raw = localStorage.getItem(USER_KEY) || sessionStorage.getItem(USER_KEY);
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(USER_KEY);
+    return null;
+  }
 }
 
 function storeToken(token, remember) {

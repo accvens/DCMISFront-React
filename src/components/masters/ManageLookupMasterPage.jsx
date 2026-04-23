@@ -23,7 +23,7 @@ function emptyForm() {
 }
 
 /**
- * Generic CRUD for /masters/{slug} lookup tables (countries, vendor-types, traveler-types, visa-types).
+ * Generic CRUD for /masters/{slug} lookup tables (countries, traveler-types).
  */
 function ManageLookupMasterPage({
   token,

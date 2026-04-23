@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AccessPageHeader } from "../access/AccessShared.jsx";
-import { BookingsSubmenu } from "../bookings/BookingsShared.jsx";
+import { BookingsSubmenu } from "../bookings/BookingsSubmenu.jsx";
 
 function MastersLayout({ items }) {
   const location = useLocation();

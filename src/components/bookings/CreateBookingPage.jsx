@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertMessage, CardLoader } from "../access/AccessShared.jsx";
+import { fetchAllListItems } from "../../fetchAllPages.js";
+import { CardLoader } from "../access/AccessShared.jsx";
+import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
 import {
   buildBookingPayload,
   createDefaultBookingForm,
   createEmptyBookingForm,
+  isVendorTaxableCapValidationMessage,
+  validateBookingDraft,
   validateBookingForm,
 } from "./BookingsShared.jsx";
 import { BookingEditorChrome } from "./BookingEditorChrome.jsx";
@@ -13,32 +17,25 @@ import OrderEntryBookingForm, { BOOKING_WIZARD_LAST_STEP_INDEX } from "./OrderEn
 function CreateBookingPage({
   token,
   apiRequest,
-  bookingStatusOptions,
   canCreateCustomer,
-  canCreateDestination,
   canCreateTraveler,
   canCreateProductType = false,
-  canCreateCatalogProduct = false,
-  canCreateVendor = false,
 }) {
   const navigate = useNavigate();
   const [state, setState] = useState({
     loading: true,
     error: "",
     customers: [],
-    destinations: [],
     travelers: [],
     products: [],
     vendors: [],
     productTypes: [],
     paymentModes: [],
+    systemUsers: [],
   });
   const [form, setForm] = useState(createEmptyBookingForm());
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  /** Remount order-entry form after save so the wizard returns to step 1. */
-  const [formEditorKey, setFormEditorKey] = useState(0);
   const [wizardStep, setWizardStep] = useState(0);
 
   useEffect(() => {
@@ -51,14 +48,14 @@ function CreateBookingPage({
 
     Promise.all([
       apiRequest("/customers?page=1&page_size=100", { token }),
-      apiRequest("/masters/destinations?page=1&page_size=100", { token }),
       apiRequest("/travelers?page=1&page_size=100", { token }),
-      apiRequest("/masters/products?page=1&page_size=100", { token }),
-      apiRequest("/masters/vendors?page=1&page_size=100", { token }),
+      fetchAllListItems(apiRequest, "/masters/products", { token }),
+      fetchAllListItems(apiRequest, "/masters/vendors", { token }),
       apiRequest("/masters/product-types?page=1&page_size=100", { token }),
       apiRequest("/masters/payment-modes?page=1&page_size=100", { token }).catch(() => ({ items: [] })),
+      apiRequest("/users?page=1&page_size=100", { token }).catch(() => ({ items: [] })),
     ])
-      .then(([customers, destinations, travelers, products, vendors, productTypes, paymentModes]) => {
+      .then(([customers, travelers, productItems, vendorItems, productTypes, paymentModes, usersRes]) => {
         if (!active) {
           return;
         }
@@ -66,12 +63,12 @@ function CreateBookingPage({
           loading: false,
           error: "",
           customers: customers.items,
-          destinations: destinations.items,
           travelers: travelers.items,
-          products: products.items,
-          vendors: vendors.items,
+          products: productItems,
+          vendors: vendorItems,
           productTypes: productTypes.items,
           paymentModes: paymentModes.items || [],
+          systemUsers: usersRes.items || [],
         };
         setState(nextState);
         setForm((current) =>
@@ -97,27 +94,37 @@ function CreateBookingPage({
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
-    setSuccessMessage("");
-    const validationError = validateBookingForm(form);
-    if (validationError) {
-      setFormError(validationError);
-      return;
+    const fullError = validateBookingForm(form);
+    let saveIncomplete = false;
+    if (fullError) {
+      const partialError = validateBookingDraft(form);
+      if (partialError) {
+        setFormError(partialError);
+        return;
+      }
+      saveIncomplete = true;
     }
     setSubmitting(true);
 
     try {
-      await apiRequest("/bookings", {
+      const created = await apiRequest("/bookings", {
         method: "POST",
         token,
-        body: buildBookingPayload(form),
+        body: buildBookingPayload(form, saveIncomplete ? { draft: true } : {}),
       });
+      const newId = created?.id;
       if (wizardStep === BOOKING_WIZARD_LAST_STEP_INDEX) {
         navigate("/bookings/list");
         return;
       }
-      setForm(createDefaultBookingForm(state));
-      setSuccessMessage("Booking saved. You can create another or keep editing.");
-      setFormEditorKey((k) => k + 1);
+      if (newId == null || Number.isNaN(Number(newId))) {
+        setFormError("Booking was created but the server did not return an id. Open it from the bookings list to edit.");
+        return;
+      }
+      navigate(`/bookings/${newId}/edit`, {
+        replace: true,
+        state: { fromCreate: true, wizardStep, savedIncomplete: saveIncomplete },
+      });
     } catch (requestError) {
       setFormError(requestError.message || "Unable to save booking.");
     } finally {
@@ -134,33 +141,35 @@ function CreateBookingPage({
       ) : (
         <form onSubmit={handleSubmit} className="ta-booking-editor-form">
           <BookingEditorChrome mode="create">
-            <AlertMessage message={state.error} variant="danger" />
-            <AlertMessage id="ta-booking-form-validation-error" message={formError} variant="danger" />
-            <AlertMessage message={successMessage} variant="success" />
+            <BookingAlertMessage
+              message={state.error}
+              variant="danger"
+              onDismiss={() => setState((s) => ({ ...s, error: "" }))}
+            />
+            <BookingAlertMessage
+              id="ta-booking-form-validation-error"
+              message={isVendorTaxableCapValidationMessage(formError) ? "" : formError}
+              variant="danger"
+              onDismiss={() => setFormError("")}
+            />
             <OrderEntryBookingForm
-              key={formEditorKey}
               mode="create"
               form={form}
               setForm={setForm}
               state={state}
-              bookingStatusOptions={bookingStatusOptions}
               token={token}
               apiRequest={apiRequest}
               canCreateCustomer={canCreateCustomer}
-              canCreateDestination={canCreateDestination}
               canCreateTraveler={canCreateTraveler}
               canCreateProductType={canCreateProductType}
-              canCreateCatalogProduct={canCreateCatalogProduct}
-              canCreateVendor={canCreateVendor}
               setCustomersList={(fn) => setState((s) => ({ ...s, customers: fn(s.customers) }))}
-              setDestinationsList={(fn) => setState((s) => ({ ...s, destinations: fn(s.destinations) }))}
               setTravelersList={(fn) => setState((s) => ({ ...s, travelers: fn(s.travelers) }))}
               setProductsList={(fn) => setState((s) => ({ ...s, products: fn(s.products) }))}
               setVendorsList={(fn) => setState((s) => ({ ...s, vendors: fn(s.vendors) }))}
               setProductTypesList={(fn) => setState((s) => ({ ...s, productTypes: fn(s.productTypes) }))}
               paymentModes={state.paymentModes || []}
               submitting={submitting}
-              submitLabel="Save Booking"
+              submitLabel="Save booking"
               savingLabel="Saving…"
               onWizardStepChange={setWizardStep}
               validationError={formError}

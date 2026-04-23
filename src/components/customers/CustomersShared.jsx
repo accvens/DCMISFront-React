@@ -270,6 +270,8 @@ export function TravelerAutocomplete({
   placeholder,
   disabled = false,
   inputClassName,
+  /** Traveler profile ids already chosen on other rows; current `value` stays selectable for display. */
+  excludeTravelerIds = [],
 }) {
   const serverMode = Boolean(apiRequest && token);
   const [remoteTravelers, setRemoteTravelers] = useState([]);
@@ -346,12 +348,29 @@ export function TravelerAutocomplete({
   }, [serverMode, remoteTravelers, selectedExtra]);
 
   const options = useMemo(() => {
+    const currentId = String(value || "").trim();
+    const excluded = new Set(
+      (excludeTravelerIds || [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+    const keepTraveler = (t) => {
+      const tid = String(t?.id ?? "").trim();
+      if (!tid) {
+        return true;
+      }
+      if (tid === currentId) {
+        return true;
+      }
+      return !excluded.has(tid);
+    };
+
     if (!serverMode) {
       const customerMap = Object.fromEntries((customers || []).map((c) => [String(c.id), c]));
       const filtered = customerIdFilter
         ? travelers.filter((t) => String(t.customer_id) === String(customerIdFilter))
         : travelers;
-      return filtered.map((t) => {
+      return filtered.filter(keepTraveler).map((t) => {
         const cust = customerMap[String(t.customer_id)];
         const line = travelerDisplayLine(t, cust);
         const tName = [t.first_name, t.last_name].filter(Boolean).join(" ");
@@ -363,7 +382,7 @@ export function TravelerAutocomplete({
         };
       });
     }
-    const list = mergedTravelersForResolve || [];
+    const list = (mergedTravelersForResolve || []).filter(keepTraveler);
     return list.map((t) => {
       const cust = linkedCustomerFromTraveler(t);
       const line = travelerDisplayLine(t, cust);
@@ -382,6 +401,8 @@ export function TravelerAutocomplete({
     customers,
     customerIdFilter,
     mergedTravelersForResolve,
+    excludeTravelerIds,
+    value,
   ]);
 
   function handleChange(v) {

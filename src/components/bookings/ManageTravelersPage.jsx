@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertMessage,
   AutocompleteField,
   CardLoader,
   ConfirmDeleteModal,
@@ -15,6 +14,7 @@ import {
   formatDateTime,
   useDebouncedValue,
 } from "../access/AccessShared.jsx";
+import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
 import { buildPagedSearchUrl, CustomerAutocomplete } from "../customers/CustomersShared.jsx";
 
 function createEmptyTravelerForm() {
@@ -201,7 +201,7 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
 
   return (
     <>
-      <AlertMessage message={error} variant="danger" />
+      <BookingAlertMessage message={error} variant="danger" onDismiss={() => setError("")} />
       <ManageCard
         title="Manage Traveler"
         subtitle="Create and maintain traveler records linked to customers."
@@ -321,7 +321,7 @@ function ManageTravelersPage({ token, apiRequest, canCreate, canUpdate, canDelet
         }}
         onSubmit={handleSubmit}
       >
-        <AlertMessage message={formError} variant="danger" />
+        <BookingAlertMessage message={formError} variant="danger" onDismiss={() => setFormError("")} />
         <div className="row g-3">
           <CustomerAutocomplete
             label="Customer"

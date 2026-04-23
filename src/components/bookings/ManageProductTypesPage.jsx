@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  AlertMessage,
   CardLoader,
   ConfirmDeleteModal,
   FormModal,
@@ -10,6 +9,7 @@ import {
   SuccessModal,
   TextField,
 } from "../access/AccessShared.jsx";
+import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
 
 function createEmptyProductTypeForm() {
   return {
@@ -34,7 +34,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
   const [successModal, setSuccessModal] = useState(null);
 
   useEffect(() => {
-    document.title = "Manage Product Type | Travel Agency";
+    document.title = "Manage Product | Travel Agency";
   }, []);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
         if (!active) {
           return;
         }
-        setError(requestError.message || "Unable to load product types.");
+        setError(requestError.message || "Unable to load products.");
         setLoading(false);
       });
 
@@ -93,13 +93,11 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
       setPage(1);
       setRefreshKey((current) => current + 1);
       setSuccessModal({
-        title: isEditing ? "Product Type Updated" : "Product Type Created",
-        message: isEditing
-          ? "Product type updated successfully."
-          : "Product type created successfully.",
+        title: isEditing ? "Product updated" : "Product created",
+        message: isEditing ? "Product updated successfully." : "Product created successfully.",
       });
     } catch (requestError) {
-      setFormError(requestError.message || "Unable to save product type.");
+      setFormError(requestError.message || "Unable to save product.");
     } finally {
       setSaving(false);
     }
@@ -114,17 +112,17 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
       }
       setRefreshKey((current) => current + 1);
     } catch (requestError) {
-      setError(requestError.message || "Unable to delete product type.");
+      setError(requestError.message || "Unable to delete product.");
     }
   }
 
   return (
     <>
-      <AlertMessage message={error} variant="danger" />
+      <BookingAlertMessage message={error} variant="danger" onDismiss={() => setError("")} />
       <ManageCard
-        title="Manage Product Type"
-        subtitle="Create and maintain product type masters."
-        actionLabel={canCreate ? "Add Product Type" : undefined}
+        title="Manage Product"
+        subtitle="Create and maintain product masters (name and description)."
+        actionLabel={canCreate ? "Add product" : undefined}
         onAction={
           canCreate
             ? () => {
@@ -136,7 +134,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
         }
       >
         {loading ? (
-          <CardLoader message="Loading product types..." />
+          <CardLoader message="Loading products..." />
         ) : (
           <>
             <SimpleTable
@@ -150,7 +148,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
                     <button
                       type="button"
                       className="btn btn-icon btn-soft-primary btn-sm"
-                      aria-label="Edit product type"
+                      aria-label="Edit product"
                       onClick={() => {
                         setForm({
                           id: String(item.id),
@@ -171,7 +169,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
                     <button
                       type="button"
                       className="btn btn-icon btn-soft-danger btn-sm"
-                      aria-label="Delete product type"
+                      aria-label="Delete product"
                       onClick={() =>
                         setDeleteTarget({
                           id: item.id,
@@ -191,7 +189,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
                 </div>,
               ])}
               sortable
-              emptyMessage="No product types found."
+              emptyMessage="No products found."
             />
             <PaginationBar
               pageData={pageData}
@@ -207,8 +205,8 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
       </ManageCard>
       <FormModal
         open={modalOpen}
-        title={form.id ? "Update Product Type" : "Add Product Type"}
-        saveLabel={form.id ? "Update Product Type" : "Create Product Type"}
+        title={form.id ? "Update product" : "Add product"}
+        saveLabel={form.id ? "Update product" : "Create product"}
         saving={saving}
         onCancel={() => {
           setModalOpen(false);
@@ -217,7 +215,7 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
         }}
         onSubmit={handleSubmit}
       >
-        <AlertMessage message={formError} variant="danger" />
+        <BookingAlertMessage message={formError} variant="danger" onDismiss={() => setFormError("")} />
         <div className="row g-3">
           <TextField
             label="Product Name"
@@ -240,9 +238,9 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
       </FormModal>
       <ConfirmDeleteModal
         open={Boolean(deleteTarget)}
-        title="Delete Product Type"
+        title="Delete product"
         message={deleteTarget ? `Are you sure you want to delete ${deleteTarget.label}?` : ""}
-        confirmLabel="Delete Product Type"
+        confirmLabel="Delete product"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => handleDelete(deleteTarget.id)}
       />

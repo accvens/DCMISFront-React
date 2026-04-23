@@ -78,6 +78,9 @@ function createEmptyDocumentForm() {
 }
 
 function validateDocumentForm(form, isEditing) {
+  if (!String(form.customer_id || "").trim()) {
+    return "Customer is required.";
+  }
   if (!form.traveler_id) {
     return "Traveler is required.";
   }
@@ -127,7 +130,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
 
     Promise.all([
       apiRequest(buildPagedSearchUrl("/traveler-documents", page, pageSize, debouncedSearch), { token }),
-      // Backend pagination validates page_size <= 100
+      // Backend pagination validates page_size <= 500; travelers include customer names for the list
       apiRequest("/travelers?page=1&page_size=100", { token }),
       apiRequest("/traveler-document-types", { token }),
     ])
@@ -157,6 +160,24 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
       })),
     [documentTypes],
   );
+
+  function resolveCustomerLabelForTraveler(travelerId) {
+    const t = travelers.find((item) => String(item.id) === String(travelerId));
+    if (!t) {
+      return "—";
+    }
+    const fromTraveler = [t.customer_first_name, t.customer_last_name].filter(Boolean).join(" ");
+    if (fromTraveler) {
+      return fromTraveler;
+    }
+    if (t.customer_ref) {
+      return t.customer_ref;
+    }
+    if (t.customer_id != null) {
+      return `Customer #${t.customer_id}`;
+    }
+    return "—";
+  }
 
   function resolveTravelerLabel(travelerId) {
     const t = travelers.find((item) => String(item.id) === String(travelerId));
@@ -221,7 +242,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Traveler Documents"
-        subtitle="Upload documents linked to travelers (PDF, images, Word)."
+        subtitle="Select a customer, then a traveler, and upload a document (PDF, images, Word)."
         toolbarExtra={
           <ListSearchInput
             id="traveler-documents-list-search"
@@ -230,7 +251,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
             placeholder="Search traveler, customer, document type, file..."
           />
         }
-        actionLabel={canCreate ? "Add Document" : undefined}
+        actionLabel={canCreate ? "Add Traveler Document" : undefined}
         onAction={
           canCreate
             ? () => {
@@ -252,9 +273,10 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
         ) : (
           <>
             <SimpleTable
-              columns={["ID", "Traveler", "Type", "File", "Uploaded", "Actions"]}
+              columns={["ID", "Customer", "Traveler", "Type", "File", "Uploaded", "Actions"]}
               rows={(pageData?.items || []).map((item) => [
                 `#${item.id}`,
+                resolveCustomerLabelForTraveler(item.traveler_id),
                 resolveTravelerLabel(item.traveler_id),
                 item.document_type || "-",
                 item.file_path ? (
@@ -366,7 +388,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
 
       <FormModal
         open={modalOpen}
-        title={form.id ? "Update Document" : "Add Document"}
+        title={form.id ? "Update Traveler Document" : "Add Traveler Document"}
         saveLabel={form.id ? "Update Document" : "Create Document"}
         saving={saving}
         size="modal-lg"
@@ -393,6 +415,9 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
             apiRequest={apiRequest}
             token={token}
           />
+          <p className="col-12 small text-muted mb-0">
+            Select a customer first, then choose the traveler this document belongs to.
+          </p>
           <TravelerAutocomplete
             label="Traveler"
             value={form.traveler_id}

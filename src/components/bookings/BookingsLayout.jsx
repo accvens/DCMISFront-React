@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AccessPageHeader } from "../access/AccessShared.jsx";
-import { BookingsSubmenu } from "./BookingsShared.jsx";
+import { BookingsSubmenu } from "./BookingsSubmenu.jsx";
 
 function BookingsLayout({ items }) {
   const location = useLocation();
@@ -11,7 +11,8 @@ function BookingsLayout({ items }) {
 
   const hideListChrome =
     location.pathname === "/bookings/create" ||
-    location.pathname.startsWith("/bookings/edit/");
+    location.pathname.startsWith("/bookings/edit/") ||
+    /^\/bookings\/[^/]+\/edit\/?$/.test(location.pathname);
 
   if (hideListChrome) {
     return <Outlet />;

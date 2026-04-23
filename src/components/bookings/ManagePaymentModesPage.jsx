@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  AlertMessage,
   CardLoader,
   ConfirmDeleteModal,
   FormModal,
@@ -10,6 +9,7 @@ import {
   SuccessModal,
   TextField,
 } from "../access/AccessShared.jsx";
+import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
 
 function createEmptyPaymentModeForm() {
   return {
@@ -120,7 +120,7 @@ function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDe
 
   return (
     <>
-      <AlertMessage message={error} variant="danger" />
+      <BookingAlertMessage message={error} variant="danger" onDismiss={() => setError("")} />
       <ManageCard
         title="Manage Payment Mode"
         subtitle="Create and maintain payment mode masters."
@@ -217,7 +217,7 @@ function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDe
         }}
         onSubmit={handleSubmit}
       >
-        <AlertMessage message={formError} variant="danger" />
+        <BookingAlertMessage message={formError} variant="danger" onDismiss={() => setFormError("")} />
         <div className="row g-3">
           <TextField
             label="Payment Mode Name"

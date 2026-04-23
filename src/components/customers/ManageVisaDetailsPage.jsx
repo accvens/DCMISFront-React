@@ -26,7 +26,6 @@ function createEmptyVisaForm() {
     customer_id: "",
     traveler_id: "",
     visa_country_id: "",
-    visa_type_id: "",
     visa_number: "",
     issue_date: "",
     expiry_date: "",
@@ -56,7 +55,6 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
   const [countries, setCountries] = useState([]);
-  const [visaTypes, setVisaTypes] = useState([]);
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
 
@@ -68,35 +66,22 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
     [countries],
   );
 
-  const visaTypeOptions = useMemo(
-    () => [
-      { value: "", label: "—" },
-      ...visaTypes.map((t) => ({ value: String(t.id), label: t.name || `Type #${t.id}` })),
-    ],
-    [visaTypes],
-  );
-
   useEffect(() => {
     document.title = "Visa Details | Travel Agency";
   }, []);
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      apiRequest("/masters/countries/options", { token }),
-      apiRequest("/masters/visa-types/options", { token }),
-    ])
-      .then(([co, vt]) => {
+    apiRequest("/masters/countries/options", { token })
+      .then((co) => {
         if (!active) {
           return;
         }
         setCountries(Array.isArray(co) ? co : []);
-        setVisaTypes(Array.isArray(vt) ? vt : []);
       })
       .catch(() => {
         if (active) {
           setCountries([]);
-          setVisaTypes([]);
         }
       });
     return () => {
@@ -115,7 +100,7 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
 
     Promise.all([
       apiRequest(buildPagedSearchUrl("/visas", page, pageSize, debouncedSearch), { token }),
-      // Backend pagination validates page_size <= 100
+      // Backend pagination validates page_size <= 500
       apiRequest("/travelers?page=1&page_size=100", { token }),
     ])
       .then(([visasResponse, travelersResponse]) => {
@@ -159,7 +144,6 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
         body: {
           traveler_id: Number(form.traveler_id),
           visa_country_id: form.visa_country_id ? Number(form.visa_country_id) : null,
-          visa_type_id: form.visa_type_id ? Number(form.visa_type_id) : null,
           visa_number: form.visa_number.trim() || null,
           issue_date: form.issue_date || null,
           expiry_date: form.expiry_date || null,
@@ -205,7 +189,7 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
             id="visas-list-search"
             value={searchInput}
             onChange={setSearchInput}
-            placeholder="Search traveler, customer, country, visa type, number..."
+            placeholder="Search traveler, customer, country, number..."
           />
         }
         actionLabel={canCreate ? "Add Visa" : undefined}
@@ -224,12 +208,11 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
         ) : (
           <>
             <SimpleTable
-              columns={["ID", "Traveler", "Country", "Type", "Visa No", "Issue", "Expiry", "Status", "Created", "Actions"]}
+              columns={["ID", "Traveler", "Country", "Visa No", "Issue", "Expiry", "Status", "Created", "Actions"]}
               rows={(pageData?.items || []).map((item) => [
                 `#${item.id}`,
                 resolveTravelerLabel(item.traveler_id),
                 item.country || "-",
-                item.visa_type || "-",
                 item.visa_number || "-",
                 item.issue_date || "-",
                 item.expiry_date || "-",
@@ -250,7 +233,6 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
                             traveler_id: String(item.traveler_id || ""),
                             visa_country_id:
                               item.visa_country_id != null ? String(item.visa_country_id) : "",
-                            visa_type_id: item.visa_type_id != null ? String(item.visa_type_id) : "",
                             visa_number: item.visa_number || "",
                             issue_date: item.issue_date || "",
                             expiry_date: item.expiry_date || "",
@@ -363,13 +345,6 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
             placeholder="Type to search countries…"
             onChange={(value) => setForm((current) => ({ ...current, visa_country_id: value }))}
             options={countryOptions}
-          />
-          <AutocompleteField
-            label="Visa Type"
-            value={form.visa_type_id}
-            placeholder="Type to search visa types…"
-            onChange={(value) => setForm((current) => ({ ...current, visa_type_id: value }))}
-            options={visaTypeOptions}
           />
           <TextField
             label="Visa Number"

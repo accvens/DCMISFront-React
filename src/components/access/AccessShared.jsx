@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
+import { formatAmountInputGrouped, formatAmountPlain, stripAmountGrouping } from "../../formatAmount.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SLUG_REGEX = /^[a-z0-9_]+$/;
@@ -14,14 +15,22 @@ export function useDebouncedValue(value, delayMs = 400) {
   return debounced;
 }
 
-export function ListSearchInput({ id, value, onChange, placeholder = "Search..." }) {
+export function ListSearchInput({
+  id,
+  value,
+  onChange,
+  placeholder = "Search...",
+  /** When set, shows a visible label above the field instead of a screen-reader-only label. */
+  fieldLabel,
+}) {
+  const showVisibleLabel = Boolean(fieldLabel);
   return (
     <div
-      className="ta-list-search flex-grow-1 d-flex align-items-center"
+      className={`ta-list-search flex-grow-1 d-flex ${showVisibleLabel ? "flex-column align-items-stretch" : "align-items-center"}`}
       style={{ minWidth: "12rem", maxWidth: "26rem" }}
     >
-      <label htmlFor={id} className="visually-hidden">
-        Search
+      <label htmlFor={id} className={showVisibleLabel ? "form-label small text-muted mb-1" : "visually-hidden"}>
+        {fieldLabel ?? "Search"}
       </label>
       <input
         id={id}
@@ -82,13 +91,16 @@ export function ManageCard({
   actionLabel,
   onAction,
   toolbarExtra,
+  /** Full-width block between the title row and card body (e.g. filters). */
+  filterSlot,
   hideHeader = false,
   children,
 }) {
   const showTitle = !hideHeader && Boolean(title);
   const showSubtitle = !hideHeader && Boolean(subtitle);
   const hasActions = Boolean(actionLabel && onAction);
-  const showBar = showTitle || showSubtitle || hasActions || Boolean(toolbarExtra);
+  const showToolbarExtras = Boolean(toolbarExtra) || hasActions;
+  const showBar = showTitle || showSubtitle || showToolbarExtras;
 
   return (
     <div className="row">
@@ -103,16 +115,19 @@ export function ManageCard({
                     {showSubtitle ? <p className="ta-card-muted mb-0">{subtitle}</p> : null}
                   </div>
                 ) : null}
-                <div className="d-flex flex-wrap gap-2 ms-auto align-items-center">
-                  {toolbarExtra}
-                  {hasActions ? (
-                    <button type="button" className="btn btn-sm btn-primary" onClick={onAction}>
-                      {actionLabel}
-                    </button>
-                  ) : null}
-                </div>
+                {showToolbarExtras ? (
+                  <div className="d-flex flex-wrap gap-2 ms-auto align-items-center">
+                    {toolbarExtra}
+                    {hasActions ? (
+                      <button type="button" className="btn btn-sm btn-primary" onClick={onAction}>
+                        {actionLabel}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
+            {filterSlot ? <div className="ta-card-filter-slot mb-3">{filterSlot}</div> : null}
             {children}
           </div>
         </div>
@@ -356,19 +371,22 @@ function getToastHost() {
   return el;
 }
 
-export function AlertMessage({ message, variant, id, autoHideAfterMs, onAutoHide }) {
+export function AlertMessage({ message, variant, id, autoHideAfterMs, onAutoHide, fadeOutDurationMs = 400 }) {
   const onAutoHideRef = useRef(onAutoHide);
   onAutoHideRef.current = onAutoHide;
-  const [hiddenByTimer, setHiddenByTimer] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const [removed, setRemoved] = useState(false);
 
   const text = String(message ?? "").trim();
 
   useEffect(() => {
     if (!text) {
-      setHiddenByTimer(false);
+      setExiting(false);
+      setRemoved(false);
       return;
     }
-    setHiddenByTimer(false);
+    setExiting(false);
+    setRemoved(false);
     const ms =
       autoHideAfterMs === 0
         ? 0
@@ -380,19 +398,26 @@ export function AlertMessage({ message, variant, id, autoHideAfterMs, onAutoHide
     if (!ms) {
       return;
     }
-    const t = window.setTimeout(() => {
-      setHiddenByTimer(true);
-      onAutoHideRef.current?.();
+    const fadeMs = typeof fadeOutDurationMs === "number" && fadeOutDurationMs >= 0 ? fadeOutDurationMs : 400;
+    const startExit = window.setTimeout(() => {
+      setExiting(true);
     }, ms);
-    return () => window.clearTimeout(t);
-  }, [text, variant, autoHideAfterMs]);
+    const finish = window.setTimeout(() => {
+      setRemoved(true);
+      onAutoHideRef.current?.();
+    }, ms + fadeMs);
+    return () => {
+      window.clearTimeout(startExit);
+      window.clearTimeout(finish);
+    };
+  }, [text, variant, autoHideAfterMs, fadeOutDurationMs]);
 
-  if (!text || hiddenByTimer) {
+  if (!text || removed) {
     return null;
   }
 
   const inner = (
-    <div className="ta-toast">
+    <div className={`ta-toast${exiting ? " ta-toast--exiting" : ""}`}>
       <div
         id={id}
         className={`alert alert-${variant} ta-alert-scrollable ta-toast__alert mb-0`}
@@ -450,6 +475,49 @@ export function ConfirmDeleteModal({
                 Cancel
               </button>
               <button type="button" className="btn btn-danger" onClick={onConfirm}>
+                {confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show"></div>
+    </>
+  );
+}
+
+/** Generic confirm dialog (primary action). Same shell as delete confirm, without destructive styling by default. */
+export function ConfirmActionModal({
+  open,
+  title,
+  message,
+  confirmLabel = "Continue",
+  cancelLabel = "Cancel",
+  confirmButtonClassName = "btn btn-primary",
+  onCancel,
+  onConfirm,
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <>
+      <div className="modal fade show ta-modal d-block" tabIndex="-1" role="dialog" aria-modal="true">
+        <div className="modal-dialog modal-dialog-centered" role="document">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">{title}</h5>
+              <button type="button" className="btn-close" onClick={onCancel} aria-label="Close"></button>
+            </div>
+            <div className="modal-body">
+              <p className="mb-0">{message}</p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-light" onClick={onCancel}>
+                {cancelLabel}
+              </button>
+              <button type="button" className={confirmButtonClassName} onClick={onConfirm}>
                 {confirmLabel}
               </button>
             </div>
@@ -600,22 +668,156 @@ export function TextField({
   min,
   placeholder,
   maxLength,
+  list,
+  id,
+  autoComplete,
+  spellCheck,
+  inputMode,
+  readOnly = false,
+  title,
+  formatAmountOnBlur = false,
+  onBlur,
+  onFocus,
 }) {
+  const [amountFocused, setAmountFocused] = useState(false);
+  const inputId = id || (label ? `ta-field-${String(label).replace(/\s+/g, "-").toLowerCase()}` : undefined);
+  const strippedBase = stripAmountGrouping(String(value ?? ""));
+  const amountNum = Number(strippedBase);
+  const editingAmount = formatAmountOnBlur && amountFocused && !readOnly;
+  const showAmountFormatted =
+    formatAmountOnBlur && !editingAmount && strippedBase !== "" && Number.isFinite(amountNum);
+  const displayValue = showAmountFormatted ? formatAmountInputGrouped(amountNum) : (value ?? "");
+  const effectiveType = formatAmountOnBlur ? "text" : type;
+  const effectiveInputMode = formatAmountOnBlur ? "decimal" : inputMode;
+
   return (
     <div className="col-12 col-md-6">
-      <label className="form-label">{label}</label>
+      <label className="form-label" htmlFor={inputId}>
+        {label}
+      </label>
       <input
-        className="form-control"
-        type={type}
-        value={value}
+        id={inputId}
+        className={`form-control${readOnly ? " bg-light" : ""}`}
+        type={effectiveType}
+        value={displayValue}
         required={required}
-        step={step}
-        min={min}
+        readOnly={readOnly}
+        title={title}
+        step={formatAmountOnBlur ? undefined : step}
+        min={formatAmountOnBlur ? undefined : min}
         placeholder={placeholder}
         maxLength={maxLength}
-        onChange={(event) => onChange(event.target.value)}
+        list={list}
+        autoComplete={autoComplete}
+        spellCheck={spellCheck}
+        inputMode={effectiveInputMode}
+        onChange={(event) => {
+          if (formatAmountOnBlur) {
+            onChange(stripAmountGrouping(event.target.value));
+          } else {
+            onChange(event.target.value);
+          }
+        }}
+        onFocus={(event) => {
+          if (formatAmountOnBlur && !readOnly) {
+            setAmountFocused(true);
+          }
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          if (formatAmountOnBlur && !readOnly) {
+            setAmountFocused(false);
+            const stripped = stripAmountGrouping(event.target.value);
+            if (stripped === "") {
+              if (value !== "" && value != null) {
+                onChange("");
+              }
+            } else {
+              const n = Number(stripped);
+              const next = Number.isFinite(n) ? formatAmountPlain(n) : stripped;
+              if (next !== String(value ?? "")) {
+                onChange(next);
+              }
+            }
+          }
+          onBlur?.(event);
+        }}
       />
     </div>
+  );
+}
+
+/**
+ * Compact amount field (tables): Indian grouping when unfocused; plain while editing; paise rounding on blur without forced ".00".
+ */
+export function AmountFormattedInput({
+  id,
+  className = "form-control form-control-sm",
+  value,
+  onChange,
+  onFocus: onFocusProp,
+  onBlur: onBlurProp,
+  disabled = false,
+  readOnly = false,
+  placeholder,
+  autoComplete = "off",
+  title,
+  "aria-label": ariaLabel,
+}) {
+  const [focused, setFocused] = useState(false);
+  const strippedBase = stripAmountGrouping(String(value ?? ""));
+  const n = Number(strippedBase);
+  const editing = focused && !readOnly && !disabled;
+  const showFormatted = !editing && strippedBase !== "" && Number.isFinite(n);
+  const displayValue = showFormatted ? formatAmountInputGrouped(n) : String(value ?? "");
+
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="decimal"
+      className={className}
+      disabled={disabled}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      autoComplete={autoComplete}
+      title={title}
+      aria-label={ariaLabel}
+      value={displayValue}
+      onFocus={(e) => {
+        if (!readOnly && !disabled) {
+          setFocused(true);
+        }
+        onFocusProp?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        if (readOnly || disabled) {
+          onBlurProp?.(e);
+          return;
+        }
+        const stripped = stripAmountGrouping(e.target.value);
+        if (stripped === "") {
+          if (value !== "" && value != null) {
+            onChange("");
+          }
+          onBlurProp?.(e);
+          return;
+        }
+        const num = Number(stripped);
+        const next = Number.isFinite(num) ? formatAmountPlain(num) : stripped;
+        if (next !== String(value ?? "")) {
+          onChange(next);
+        }
+        onBlurProp?.(e);
+      }}
+      onChange={(e) => {
+        if (readOnly || disabled) {
+          return;
+        }
+        onChange(stripAmountGrouping(e.target.value));
+      }}
+    />
   );
 }
 

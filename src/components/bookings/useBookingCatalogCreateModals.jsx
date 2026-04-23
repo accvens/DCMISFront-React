@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertMessage, FormModal, SelectField, TextField } from "../access/AccessShared.jsx";
+import { FormModal, SelectField, TextField } from "../access/AccessShared.jsx";
+import { parseAmountNumeric } from "../../formatAmount.js";
+import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
 
 function emptyProductTypeForm() {
   return { product_name: "", description: "" };
 }
 
 function emptyVendorForm() {
-  return { vendor_name: "", vendor_type_id: "", city: "", country_id: "" };
+  return {
+    vendor_name: "",
+    address: "",
+    country_id: "",
+    gst_number: "",
+    bank_account_number: "",
+    bank_ifsc: "",
+    bank_branch: "",
+    credit_limit_days: "",
+  };
 }
 
 function emptyCatalogProductForm() {
@@ -16,7 +27,7 @@ function emptyCatalogProductForm() {
 
 function validateProductType(f) {
   if (!String(f.product_name || "").trim()) {
-    return "Product type name is required.";
+    return "Product name is required.";
   }
   return "";
 }
@@ -25,23 +36,30 @@ function validateVendor(f) {
   if (!String(f.vendor_name || "").trim()) {
     return "Vendor name is required.";
   }
+  const creditRaw = String(f.credit_limit_days ?? "").trim();
+  if (creditRaw !== "") {
+    const n = Number(creditRaw);
+    if (!Number.isFinite(n) || n < 0 || n > 3650) {
+      return "Credit limit in days must be a whole number between 0 and 3650.";
+    }
+  }
   return "";
 }
 
-function validateCatalogProduct(f, destinationId) {
-  if (!String(destinationId || "").trim()) {
-    return "Choose a destination on Booking Details before adding a catalogue product.";
+function validateCatalogProduct(f, bookingDestination) {
+  if (!String(bookingDestination || "").trim()) {
+    return "Enter a destination on Booking Details before adding a catalogue product.";
   }
   if (!String(f.product_name || "").trim()) {
     return "Product name is required.";
   }
   if (!f.product_type_id) {
-    return "Product type is required.";
+    return "Product is required.";
   }
   if (!f.vendor_id) {
     return "Vendor is required.";
   }
-  const price = Number(f.price);
+  const price = parseAmountNumeric(f.price);
   if (!Number.isFinite(price) || price < 0) {
     return "Price must be a valid amount (0 or greater).";
   }
@@ -49,21 +67,19 @@ function validateCatalogProduct(f, destinationId) {
 }
 
 /**
- * Modals to create product type, catalogue product, or vendor while editing a booking.
- * Gated by parent (typically `create_product_type` permission).
+ * Modals to create a master product while editing a booking (toolbar: Add Product).
+ * Vendor / catalogue-product modals remain in this hook for reuse but are not opened from the booking UI.
  */
 export function useBookingCatalogCreateModals({
   token,
   apiRequest,
-  destinationId,
+  bookingDestination,
   productTypes,
   setProductTypes,
   vendors,
   setVendors,
   setProducts,
   canCreateProductType = false,
-  canCreateCatalogProduct = false,
-  canCreateVendor = false,
 }) {
   const [ptOpen, setPtOpen] = useState(false);
   const [ptForm, setPtForm] = useState(emptyProductTypeForm());
@@ -82,7 +98,6 @@ export function useBookingCatalogCreateModals({
   const [prSaving, setPrSaving] = useState(false);
 
   const [countries, setCountries] = useState([]);
-  const [vendorTypes, setVendorTypes] = useState([]);
 
   const countryOptions = useMemo(
     () => [
@@ -92,31 +107,18 @@ export function useBookingCatalogCreateModals({
     [countries],
   );
 
-  const vendorTypeOptions = useMemo(
-    () => [
-      { value: "", label: "—" },
-      ...vendorTypes.map((t) => ({ value: String(t.id), label: t.name || `Type #${t.id}` })),
-    ],
-    [vendorTypes],
-  );
-
   useEffect(() => {
     let active = true;
-    Promise.all([
-      apiRequest("/masters/countries/options", { token }),
-      apiRequest("/masters/vendor-types/options", { token }),
-    ])
-      .then(([co, vt]) => {
+    apiRequest("/masters/countries/options", { token })
+      .then((co) => {
         if (!active) {
           return;
         }
         setCountries(Array.isArray(co) ? co : []);
-        setVendorTypes(Array.isArray(vt) ? vt : []);
       })
       .catch(() => {
         if (active) {
           setCountries([]);
-          setVendorTypes([]);
         }
       });
     return () => {
@@ -128,19 +130,6 @@ export function useBookingCatalogCreateModals({
     setPtForm(emptyProductTypeForm());
     setPtErr("");
     setPtOpen(true);
-  }, []);
-
-  const openVendor = useCallback(() => {
-    setVForm(emptyVendorForm());
-    setVErr("");
-    setVOpen(true);
-  }, []);
-
-  const openCatalogProduct = useCallback(() => {
-    setPrForm(emptyCatalogProductForm());
-    setPrErr("");
-    setPrSuccess("");
-    setPrOpen(true);
   }, []);
 
   async function submitProductType(e) {
@@ -170,7 +159,7 @@ export function useBookingCatalogCreateModals({
       setPtOpen(false);
       setPtForm(emptyProductTypeForm());
     } catch (err) {
-      setPtErr(err.message || "Unable to create product type.");
+      setPtErr(err.message || "Unable to create product.");
     } finally {
       setPtSaving(false);
     }
@@ -185,6 +174,11 @@ export function useBookingCatalogCreateModals({
       setVErr(ve);
       return;
     }
+    const creditRaw = String(vForm.credit_limit_days ?? "").trim();
+    let credit_limit_days = null;
+    if (creditRaw !== "") {
+      credit_limit_days = Math.trunc(Number(creditRaw));
+    }
     setVSaving(true);
     try {
       const created = await apiRequest("/masters/vendors", {
@@ -192,9 +186,13 @@ export function useBookingCatalogCreateModals({
         token,
         body: {
           vendor_name: vForm.vendor_name.trim(),
-          vendor_type_id: vForm.vendor_type_id ? Number(vForm.vendor_type_id) : null,
-          city: vForm.city.trim() || null,
+          address: vForm.address.trim() || null,
           country_id: vForm.country_id ? Number(vForm.country_id) : null,
+          gst_number: vForm.gst_number.trim() || null,
+          bank_account_number: vForm.bank_account_number.trim() || null,
+          bank_ifsc: vForm.bank_ifsc.trim() || null,
+          bank_branch: vForm.bank_branch.trim() || null,
+          credit_limit_days,
         },
       });
       setVendors((list) =>
@@ -216,7 +214,7 @@ export function useBookingCatalogCreateModals({
     e.stopPropagation();
     setPrErr("");
     setPrSuccess("");
-    const ve = validateCatalogProduct(prForm, destinationId);
+    const ve = validateCatalogProduct(prForm, bookingDestination);
     if (ve) {
       setPrErr(ve);
       return;
@@ -229,9 +227,9 @@ export function useBookingCatalogCreateModals({
         body: {
           product_name: prForm.product_name.trim(),
           product_type_id: Number(prForm.product_type_id),
-          destination_id: Number(destinationId),
+          destination: String(bookingDestination || "").trim(),
           vendor_id: Number(prForm.vendor_id),
-          price: Number(prForm.price),
+          price: parseAmountNumeric(prForm.price),
         },
       });
       setProducts((list) => [...list, created]);
@@ -245,7 +243,7 @@ export function useBookingCatalogCreateModals({
   }
 
   const typeOptionsForProduct = [
-    { value: "", label: "Select product type" },
+    { value: "", label: "Select product" },
     ...(productTypes || []).map((t) => ({
       value: String(t.id),
       label: t.product_name,
@@ -266,7 +264,7 @@ export function useBookingCatalogCreateModals({
         {ptOpen ? (
           <FormModal
             open
-            title="Create product type"
+            title="Create product"
             saveLabel="Create"
             saving={ptSaving}
             onCancel={() => {
@@ -276,10 +274,10 @@ export function useBookingCatalogCreateModals({
             }}
             onSubmit={submitProductType}
           >
-            <AlertMessage message={ptErr} variant="danger" />
+            <BookingAlertMessage message={ptErr} variant="danger" onDismiss={() => setPtErr("")} />
             <div className="row g-3">
               <TextField
-                label="Product type name"
+                label="Product name"
                 value={ptForm.product_name}
                 required
                 onChange={(val) => setPtForm((c) => ({ ...c, product_name: val }))}
@@ -299,6 +297,8 @@ export function useBookingCatalogCreateModals({
             title="Create vendor"
             saveLabel="Create"
             saving={vSaving}
+            size="modal-lg"
+            scrollableBody
             onCancel={() => {
               setVOpen(false);
               setVForm(emptyVendorForm());
@@ -306,7 +306,7 @@ export function useBookingCatalogCreateModals({
             }}
             onSubmit={submitVendor}
           >
-            <AlertMessage message={vErr} variant="danger" />
+            <BookingAlertMessage message={vErr} variant="danger" onDismiss={() => setVErr("")} />
             <div className="row g-3">
               <TextField
                 label="Vendor name"
@@ -314,24 +314,74 @@ export function useBookingCatalogCreateModals({
                 required
                 onChange={(val) => setVForm((c) => ({ ...c, vendor_name: val }))}
               />
-              <SelectField
-                label="Vendor type"
-                value={vForm.vendor_type_id}
-                onChange={(val) => setVForm((c) => ({ ...c, vendor_type_id: val }))}
-                options={vendorTypeOptions}
-              />
-              <TextField
-                label="City"
-                value={vForm.city}
-                onChange={(val) => setVForm((c) => ({ ...c, city: val }))}
-              />
+              <div className="col-12">
+                <label className="form-label" htmlFor="ta-catalog-vendor-address">
+                  Address
+                </label>
+                <textarea
+                  id="ta-catalog-vendor-address"
+                  className="form-control"
+                  rows={3}
+                  value={vForm.address}
+                  onChange={(e) => setVForm((c) => ({ ...c, address: e.target.value }))}
+                  placeholder="Street, area, postal code…"
+                />
+              </div>
               <SelectField
                 label="Country"
                 value={vForm.country_id}
                 onChange={(val) => setVForm((c) => ({ ...c, country_id: val }))}
                 options={countryOptions}
               />
+              <TextField
+                label="GST number"
+                value={vForm.gst_number}
+                maxLength={50}
+                onChange={(val) => setVForm((c) => ({ ...c, gst_number: val }))}
+              />
+              <TextField
+                label="Credit limit (days)"
+                type="number"
+                min={0}
+                max={3650}
+                step={1}
+                value={vForm.credit_limit_days}
+                placeholder="e.g. 10 — due date = invoice date + days"
+                onChange={(val) => setVForm((c) => ({ ...c, credit_limit_days: val }))}
+              />
             </div>
+
+            <section
+              className="border rounded-3 p-3 p-md-4 mt-3 mb-0 bg-light"
+              aria-labelledby="ta-catalog-vendor-bank-heading"
+            >
+              <h2 id="ta-catalog-vendor-bank-heading" className="h6 fw-semibold mb-1">
+                Bank details
+              </h2>
+              <p className="small text-muted mb-3 mb-md-4">
+                Payout / settlement account for this vendor (optional).
+              </p>
+              <div className="row g-3">
+                <TextField
+                  label="Account number"
+                  value={vForm.bank_account_number}
+                  maxLength={34}
+                  onChange={(val) => setVForm((c) => ({ ...c, bank_account_number: val }))}
+                />
+                <TextField
+                  label="IFSC code"
+                  value={vForm.bank_ifsc}
+                  maxLength={20}
+                  onChange={(val) => setVForm((c) => ({ ...c, bank_ifsc: val }))}
+                />
+                <TextField
+                  label="Branch"
+                  value={vForm.bank_branch}
+                  maxLength={200}
+                  onChange={(val) => setVForm((c) => ({ ...c, bank_branch: val }))}
+                />
+              </div>
+            </section>
           </FormModal>
         ) : null}
 
@@ -349,8 +399,8 @@ export function useBookingCatalogCreateModals({
             }}
             onSubmit={submitCatalogProduct}
           >
-            <AlertMessage message={prErr} variant="danger" />
-            <AlertMessage message={prSuccess} variant="success" />
+            <BookingAlertMessage message={prErr} variant="danger" onDismiss={() => setPrErr("")} />
+            <BookingAlertMessage message={prSuccess} variant="success" onDismiss={() => setPrSuccess("")} />
             <div className="row g-3">
               <TextField
                 label="Product name"
@@ -359,7 +409,7 @@ export function useBookingCatalogCreateModals({
                 onChange={(val) => setPrForm((c) => ({ ...c, product_name: val }))}
               />
               <SelectField
-                label="Product type"
+                label="Product"
                 value={prForm.product_type_id}
                 required
                 onChange={(val) => setPrForm((c) => ({ ...c, product_type_id: val }))}
@@ -374,9 +424,7 @@ export function useBookingCatalogCreateModals({
               />
               <TextField
                 label="Price"
-                type="number"
-                step="0.01"
-                min="0"
+                formatAmountOnBlur
                 value={prForm.price}
                 required
                 onChange={(val) => setPrForm((c) => ({ ...c, price: val }))}
@@ -388,38 +436,14 @@ export function useBookingCatalogCreateModals({
       document.body,
     );
 
-  const showBar = canCreateProductType || canCreateCatalogProduct || canCreateVendor;
-
   return {
     renderCatalogModals,
-    catalogMasterToolbar: showBar ? (
-        <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-          {canCreateProductType ? (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={openProductType}>
-              Add product type
-            </button>
-          ) : null}
-          {canCreateVendor ? (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={openVendor}>
-              Add vendor
-            </button>
-          ) : null}
-          {canCreateCatalogProduct ? (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={openCatalogProduct}
-              disabled={!String(destinationId || "").trim()}
-              title={
-                !String(destinationId || "").trim()
-                  ? "Select a destination in Booking Details first"
-                  : undefined
-              }
-            >
-              Add catalogue product
-            </button>
-          ) : null}
-        </div>
-      ) : null,
+    catalogMasterToolbar: canCreateProductType ? (
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <button type="button" className="btn btn-sm btn-outline-secondary" onClick={openProductType}>
+          Add Product
+        </button>
+      </div>
+    ) : null,
   };
 }

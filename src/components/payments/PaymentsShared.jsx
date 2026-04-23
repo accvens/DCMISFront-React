@@ -57,13 +57,9 @@ export function createMap(items, key) {
   }, {});
 }
 
-export function formatCurrency(value) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
-}
+import { formatCurrency, parseAmountNumeric } from "../../formatAmount.js";
+
+export { formatCurrency, parseAmountNumeric };
 
 export function createEmptyPaymentForm() {
   return {
@@ -109,7 +105,7 @@ export function validatePaymentForm(form) {
     return "Booking is required.";
   }
 
-  if (!form.amount || Number(form.amount) <= 0) {
+  if (!form.amount || parseAmountNumeric(form.amount) <= 0) {
     return "Amount must be greater than 0.";
   }
 

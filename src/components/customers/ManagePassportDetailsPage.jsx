@@ -103,7 +103,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
 
     Promise.all([
       apiRequest(buildPagedSearchUrl("/passports", page, pageSize, debouncedSearch), { token }),
-      // Backend pagination validates page_size <= 100
+      // Backend pagination validates page_size <= 500
       apiRequest("/travelers?page=1&page_size=100", { token }),
     ])
       .then(([passportsResponse, travelersResponse]) => {
