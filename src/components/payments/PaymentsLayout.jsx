@@ -1,6 +1,4 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { AccessPageHeader } from "../access/AccessShared.jsx";
-import { PaymentsSubmenu } from "./PaymentsShared.jsx";
 
 function PaymentsLayout() {
   const location = useLocation();
@@ -9,16 +7,7 @@ function PaymentsLayout() {
     return <Navigate to="/payments/customer" replace />;
   }
 
-  return (
-    <>
-      <AccessPageHeader
-        title="Payments"
-        subtitle="Track customer and vendor payments in separate sections"
-      />
-      <PaymentsSubmenu />
-      <Outlet />
-    </>
-  );
+  return <Outlet />;
 }
 
 export default PaymentsLayout;

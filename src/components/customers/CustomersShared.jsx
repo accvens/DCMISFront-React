@@ -1,32 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
 import { AutocompleteField } from "../access/AccessShared.jsx";
-
-export function CustomersSubmenu({ links }) {
-  const submenuLinks = links?.length
-    ? links
-    : [{ to: "/customers/list", label: "Manage Customer" }];
-
-  return (
-    <div className="card">
-      <div className="card-body py-3">
-        <div className="ta-submenu">
-          {submenuLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) =>
-                `btn btn-sm ${isActive ? "btn-primary" : "btn-light"}`
-              }
-            >
-              {link.label}
-            </NavLink>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** Build `?page=&page_size=&search=` for list APIs that support server-side search. */
 export function buildPagedSearchUrl(path, page, pageSize, search) {
@@ -93,6 +66,42 @@ export function createEmptyCustomerForm() {
   };
 }
 
+/**
+ * Normalizes optional mobile input to 10 digits, or null if blank.
+ * Strips non-digits; strips leading country code 91 when the digit string is long enough.
+ * Returns "" if the value is non-empty but cannot be normalized to 10 digits.
+ */
+export function parseOptionalTenDigitMobile(contactValue) {
+  const raw = String(contactValue ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+  let digits = raw.replace(/\D/g, "");
+  if (!digits) {
+    return "";
+  }
+  if (digits.startsWith("91") && digits.length >= 12) {
+    digits = digits.slice(2);
+  }
+  if (digits.length > 10) {
+    return "";
+  }
+  return digits.length === 10 ? digits : "";
+}
+
+/** If blank, valid. Otherwise must normalize to exactly 10 digits (see {@link parseOptionalTenDigitMobile}). */
+export function validateOptionalTenDigitContact(contactValue) {
+  const raw = String(contactValue ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+  const parsed = parseOptionalTenDigitMobile(contactValue);
+  if (!parsed || parsed.length !== 10) {
+    return "Please enter a valid 10-digit contact number.";
+  }
+  return "";
+}
+
 export function validateCustomerForm(form) {
   if (!String(form.first_name || "").trim()) {
     return "First name is required.";
@@ -103,6 +112,11 @@ export function validateCustomerForm(form) {
 
   if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
     return "Enter a valid email address.";
+  }
+
+  const contactErr = validateOptionalTenDigitContact(form.contact_number);
+  if (contactErr) {
+    return contactErr;
   }
 
   if (!form.gender) {
@@ -133,7 +147,8 @@ export function travelerDisplayLine(traveler, customer) {
 }
 
 export function CustomerAutocomplete({
-  label = "Customer",
+  label = "",
+  placeholder = "Type customer to search",
   value,
   onChange,
   customers = [],
@@ -146,6 +161,7 @@ export function CustomerAutocomplete({
   addNewLabel,
   wrapperClassName,
   hideLabel = false,
+  inputClassName,
 }) {
   const serverMode = Boolean(apiRequest && token);
   const [remoteCustomers, setRemoteCustomers] = useState([]);
@@ -235,18 +251,32 @@ export function CustomerAutocomplete({
     }
   }
 
+  const effectiveWrapper = String(wrapperClassName || "").trim() || "col-12 col-md-6";
+  const showVisualLabel = Boolean(String(label || "").trim()) && !hideLabel;
+  const reserveToolbarLike = /ta-travelers-toolbar/i.test(effectiveWrapper);
+  const reserveLabelSpace =
+    !reserveToolbarLike &&
+    !showVisualLabel &&
+    /\bcol-md-[46]\b/.test(effectiveWrapper);
+
   return (
     <AutocompleteField
       label={label}
+      placeholder={placeholder}
+      ariaLabel={
+        label && !hideLabel ? undefined : String(label || "").trim() || "Customer"
+      }
       value={value}
       onChange={handleChange}
       options={options}
       required={required}
       onAddNew={onAddNew}
       addNewLabel={addNewLabel}
-      wrapperClassName={wrapperClassName || "col-12 col-md-6"}
+      wrapperClassName={effectiveWrapper}
       hideLabel={hideLabel}
+      inputClassName={inputClassName}
       onDebouncedInputChange={serverMode ? (q) => setFetchQuery(q) : undefined}
+      reserveLabelSpace={reserveLabelSpace}
     />
   );
 }
@@ -337,15 +367,48 @@ export function TravelerAutocomplete({
     if (!serverMode) {
       return null;
     }
+    const currentId = String(value || "").trim();
+    /** In server mode the list API may be customer-scoped; the `travelers` prop can still be a global pool — only merge rows for this customer (or the current value for display until form clears). */
+    const keepForFilter = (t) => {
+      if (!t) {
+        return false;
+      }
+      if (!cid) {
+        return true;
+      }
+      if (String(t.customer_id) === cid) {
+        return true;
+      }
+      if (currentId && String(t.id) === currentId) {
+        return true;
+      }
+      return false;
+    };
     const map = new Map();
     for (const t of remoteTravelers) {
-      map.set(String(t.id), t);
+      if (keepForFilter(t)) {
+        map.set(String(t.id), t);
+      }
     }
-    if (selectedExtra) {
+    if (selectedExtra && keepForFilter(selectedExtra)) {
       map.set(String(selectedExtra.id), selectedExtra);
     }
+    // Include locally known travelers (e.g. just created from the modal) so the selected
+    // value can render immediately while server search results catch up.
+    for (const t of travelers || []) {
+      if (!t || t.id == null) {
+        continue;
+      }
+      if (!keepForFilter(t)) {
+        continue;
+      }
+      const id = String(t.id);
+      if (!map.has(id)) {
+        map.set(id, t);
+      }
+    }
     return Array.from(map.values());
-  }, [serverMode, remoteTravelers, selectedExtra]);
+  }, [serverMode, remoteTravelers, selectedExtra, travelers, cid, value]);
 
   const options = useMemo(() => {
     const currentId = String(value || "").trim();
@@ -384,7 +447,8 @@ export function TravelerAutocomplete({
     }
     const list = (mergedTravelersForResolve || []).filter(keepTraveler);
     return list.map((t) => {
-      const cust = linkedCustomerFromTraveler(t);
+      const embedded = linkedCustomerFromTraveler(t);
+      const cust = embedded;
       const line = travelerDisplayLine(t, cust);
       const tName = [t.first_name, t.last_name].filter(Boolean).join(" ");
       const cName = cust ? [cust.first_name, cust.last_name].filter(Boolean).join(" ") : "";

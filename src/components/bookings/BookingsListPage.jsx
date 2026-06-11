@@ -10,7 +10,25 @@ import {
   useDebouncedValue,
 } from "../access/AccessShared.jsx";
 import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
-import { StatusBadge, bookingListDisplayStatus, formatCurrency, formatDate } from "./BookingsShared.jsx";
+import { StatusBadge, bookingListDisplayStatus, formatCurrencyAmount, formatDate, formatDateTime } from "./BookingsShared.jsx";
+
+function formatLocalDateForInput(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Default booking list filter: from = one calendar month before today, to = today (local). */
+function getDefaultBookingListDateRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setMonth(start.getMonth() - 1);
+  return {
+    from: formatLocalDateForInput(start),
+    to: formatLocalDateForInput(end),
+  };
+}
 
 /** Open / Closed display; API still uses Pending / Completed (or Open/Closed accepted by server). */
 function BookingListStatusCell({ bookingId, status, saving, onSetStatus, canCloseBooking, canReopenBooking }) {
@@ -67,6 +85,8 @@ function BookingListStatusCell({ bookingId, status, saving, onSetStatus, canClos
 function BookingsListPage({
   token,
   apiRequest,
+  canCreateBooking = false,
+  canDeleteBooking = false,
   canCloseBooking = false,
   canReopenBooking = false,
 }) {
@@ -75,8 +95,8 @@ function BookingsListPage({
   const [pageSize, setPageSize] = useState(100);
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => getDefaultBookingListDateRange().from);
+  const [dateTo, setDateTo] = useState(() => getDefaultBookingListDateRange().to);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [statusSavingId, setStatusSavingId] = useState(null);
@@ -212,6 +232,13 @@ function BookingsListPage({
   }
 
   async function handleDelete(bookingId) {
+    if (!canDeleteBooking) {
+      setState((current) => ({
+        ...current,
+        error: "You do not have permission to delete bookings.",
+      }));
+      return;
+    }
     try {
       await apiRequest(`/bookings/${bookingId}`, {
         method: "DELETE",
@@ -230,13 +257,15 @@ function BookingsListPage({
     }
   }
 
-  const hasDateFilters = Boolean(dateFrom || dateTo);
+  const defaultRange = getDefaultBookingListDateRange();
+  const datesAtDefaultRange =
+    dateFrom === defaultRange.from && dateTo === defaultRange.to;
 
   return (
     <>
       {dateRangeInvalid ? (
         <div className="alert alert-warning mb-3" role="alert">
-          <strong>Date range</strong> — &quot;Created from&quot; must be on or before &quot;Created to&quot;.
+          <strong>Date range</strong> — &quot;From&quot; must be on or before &quot;To&quot;.
         </div>
       ) : null}
       <BookingAlertMessage
@@ -250,11 +279,10 @@ function BookingsListPage({
           <div className="ta-bookings-filters-bar">
             <div className="row g-3 g-lg-4 align-items-end">
               <div className="col-12 col-lg-7 col-xl-6">
-                <p className="ta-bookings-filters-bar__title mb-2">Filters</p>
                 <div className="d-flex flex-wrap align-items-end gap-2 gap-md-3">
                   <div className="ta-bookings-filter-field">
                     <label className="form-label small text-muted" htmlFor="ta-bookings-filter-from">
-                      Created from
+                      From
                     </label>
                     <input
                       id="ta-bookings-filter-from"
@@ -262,7 +290,7 @@ function BookingsListPage({
                       className="form-control form-control-sm"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
-                      aria-label="Filter bookings created on or after this date"
+                      aria-label="From date"
                     />
                   </div>
                   <span className="ta-bookings-filters-sep text-muted pb-1 d-none d-sm-block" aria-hidden="true">
@@ -270,7 +298,7 @@ function BookingsListPage({
                   </span>
                   <div className="ta-bookings-filter-field">
                     <label className="form-label small text-muted" htmlFor="ta-bookings-filter-to">
-                      Created to
+                      To
                     </label>
                     <input
                       id="ta-bookings-filter-to"
@@ -278,20 +306,21 @@ function BookingsListPage({
                       className="form-control form-control-sm"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
-                      aria-label="Filter bookings created on or before this date"
+                      aria-label="To date"
                     />
                   </div>
                   <div className="d-flex align-items-end pt-1 pt-sm-0">
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-secondary"
-                      disabled={!hasDateFilters}
+                      disabled={datesAtDefaultRange}
                       onClick={() => {
-                        setDateFrom("");
-                        setDateTo("");
+                        const next = getDefaultBookingListDateRange();
+                        setDateFrom(next.from);
+                        setDateTo(next.to);
                       }}
                     >
-                      Reset dates
+                      Reset
                     </button>
                   </div>
                 </div>
@@ -324,7 +353,7 @@ function BookingsListPage({
                 "Destination",
                 "Travel Start Date",
                 "Status",
-                "Total",
+                "Total (₹)",
                 "Actions",
               ]}
               rows={(state.bookingsPage?.items || []).map((booking) => [
@@ -334,7 +363,7 @@ function BookingsListPage({
                   className="text-nowrap small"
                   data-sort={booking.created_at ? String(booking.created_at) : ""}
                 >
-                  {booking.created_at ? formatDate(booking.created_at) : "—"}
+                  {booking.created_at ? formatDateTime(booking.created_at) : "—"}
                 </span>,
                 booking.drc_no || "-",
                 (() => {
@@ -359,7 +388,7 @@ function BookingsListPage({
                   />
                 </div>,
                 <span key={`booking-total-${booking.id}`} data-sort={String(booking.total_amount ?? "")}>
-                  {formatCurrency(booking.total_amount)}
+                  {formatCurrencyAmount(booking.total_amount)}
                 </span>,
                 <div key={`booking-actions-${booking.id}`} className="ta-table-actions">
                   <button
@@ -377,6 +406,8 @@ function BookingsListPage({
                     type="button"
                     className="btn btn-icon btn-soft-danger btn-sm"
                     aria-label="Delete booking"
+                    title={canDeleteBooking ? "Delete booking" : "You do not have permission to delete bookings"}
+                    disabled={!canDeleteBooking}
                     onClick={() =>
                       setDeleteTarget({
                         id: booking.id,

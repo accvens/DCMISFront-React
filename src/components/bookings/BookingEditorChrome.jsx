@@ -1,47 +1,10 @@
-import { NavLink } from "react-router-dom";
-
-function BreadcrumbChevron() {
-  return (
-    <svg className="ta-booking-editor__breadcrumb-chevron" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 6l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 /**
  * Compact page shell for full-screen create / edit booking.
  */
-export function BookingEditorChrome({ mode, bookingId, children }) {
-  const isEdit = mode === "edit";
-
+export function BookingEditorChrome({ children }) {
   return (
     <div className="ta-booking-editor">
       <div className="ta-booking-editor__container">
-        <header className="ta-booking-editor__header">
-          <nav className="ta-booking-editor__breadcrumb" aria-label="Breadcrumb">
-            <ol className="ta-booking-editor__breadcrumb-list">
-              <li className="ta-booking-editor__breadcrumb-item">
-                <NavLink end to="/bookings/list" className="ta-booking-editor__breadcrumb-link">
-                  Bookings
-                </NavLink>
-              </li>
-              <li className="ta-booking-editor__breadcrumb-item ta-booking-editor__breadcrumb-item--sep" aria-hidden="true">
-                <BreadcrumbChevron />
-              </li>
-              <li className="ta-booking-editor__breadcrumb-item">
-                <span className="ta-booking-editor__breadcrumb-current" aria-current="page">
-                  {isEdit ? `Edit #${bookingId}` : "New booking"}
-                </span>
-              </li>
-            </ol>
-          </nav>
-        </header>
         <div className="ta-booking-editor__body">{children}</div>
       </div>
     </div>
@@ -49,15 +12,17 @@ export function BookingEditorChrome({ mode, bookingId, children }) {
 }
 
 /**
- * Row below the wizard step content: Previous | Next + Save (inside &lt;form&gt;).
+ * Row below the wizard step content: Previous | Next + Save.
+ * Save uses `type="button"` + onClick so Enter in other fields does not submit the parent form.
  */
 export function BookingWizardToolbar({
   /** When true, primary submit is in flight (shows `savingLabel` on the submit button). */
   submitting = false,
-  submitLabel = "Save booking",
+  submitLabel = "Save",
   savingLabel,
   onPrevious,
   onNext,
+  onSave,
   previousDisabled,
   nextDisabled,
   stepIndex,
@@ -86,7 +51,12 @@ export function BookingWizardToolbar({
           >
             Next
           </button>
-          <button type="submit" className="btn ta-booking-editor-actions__submit" disabled={submitting}>
+          <button
+            type="button"
+            className="btn ta-booking-editor-actions__submit"
+            disabled={submitting}
+            onClick={onSave}
+          >
             {submitting ? savingLabel || "Saving…" : submitLabel}
           </button>
         </div>

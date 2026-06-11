@@ -83,6 +83,15 @@ function ManageLookupMasterPage({
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError(`You do not have permission to add ${title.toLowerCase()}.`);
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError(`You do not have permission to update ${title.toLowerCase()}.`);
+      return;
+    }
     if (!String(form.name || "").trim()) {
       setFormError("Name is required.");
       return;
@@ -93,7 +102,6 @@ function ManageLookupMasterPage({
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(form.id ? `${basePath}/${form.id}` : basePath, {
@@ -121,6 +129,10 @@ function ManageLookupMasterPage({
   }
 
   async function handleDelete(id) {
+    if (!canDelete) {
+      setError(`You do not have permission to delete ${title.toLowerCase()}.`);
+      return;
+    }
     try {
       await apiRequest(`${basePath}/${id}`, { method: "DELETE", token });
       setDeleteTarget(null);

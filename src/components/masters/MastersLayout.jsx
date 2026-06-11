@@ -1,6 +1,4 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { AccessPageHeader } from "../access/AccessShared.jsx";
-import { BookingsSubmenu } from "../bookings/BookingsSubmenu.jsx";
 
 function MastersLayout({ items }) {
   const location = useLocation();
@@ -10,17 +8,7 @@ function MastersLayout({ items }) {
     return <Navigate to={first || "/dashboard"} replace />;
   }
 
-  return (
-    <>
-      <AccessPageHeader
-        title="Master section"
-        subtitle="Manage master data used in bookings."
-      />
-      <BookingsSubmenu links={items} />
-      <Outlet />
-    </>
-  );
+  return <Outlet />;
 }
 
 export default MastersLayout;
-

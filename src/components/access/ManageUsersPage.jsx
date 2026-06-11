@@ -17,7 +17,7 @@ import {
   validateUserForm,
 } from "./AccessShared.jsx";
 
-function ManageUsersPage({ token, apiRequest }) {
+function ManageUsersPage({ token, apiRequest, canCreate = false, canDelete = false }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -69,13 +69,21 @@ function ManageUsersPage({ token, apiRequest }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add users.");
+      return;
+    }
+    if (isEditing && !canCreate) {
+      setFormError("You do not have permission to update users.");
+      return;
+    }
     const validationError = validateUserForm(form);
     if (validationError) {
       setFormError(validationError);
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       const formData = new FormData();
@@ -115,6 +123,10 @@ function ManageUsersPage({ token, apiRequest }) {
   }
 
   async function handleDelete(userId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete users.");
+      return;
+    }
     try {
       await apiRequest(`/users/${userId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -142,12 +154,16 @@ function ManageUsersPage({ token, apiRequest }) {
       <ManageCard
         title="Manage User"
         subtitle="Create system users and assign one or more roles."
-        actionLabel="Add User"
-        onAction={() => {
-          setForm(createEmptyUserForm());
-          setFormError("");
-          setModalOpen(true);
-        }}
+        actionLabel={canCreate ? "Add User" : undefined}
+        onAction={
+          canCreate
+            ? () => {
+                setForm(createEmptyUserForm());
+                setFormError("");
+                setModalOpen(true);
+              }
+            : undefined
+        }
       >
         {loading ? (
           <CardLoader message="Loading users..." />
@@ -163,55 +179,60 @@ function ManageUsersPage({ token, apiRequest }) {
                 item.roles?.length ? item.roles.join(", ") : "-",
                 formatDateTime(item.created_at),
                 <div key={`user-actions-${item.id}`} className="ta-table-actions">
-                  <button
-                    type="button"
-                    className="btn btn-icon btn-soft-primary btn-sm"
-                    aria-label="Edit user"
-                    onClick={() => {
-                      const selectedRoleIds = (item.roles || [])
-                        .map((roleName) =>
-                          roleOptions.find((role) => role.role_name === roleName),
-                        )
-                        .filter(Boolean)
-                        .map((role) => String(role.id));
+                  {canCreate ? (
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-soft-primary btn-sm"
+                      aria-label="Edit user"
+                      onClick={() => {
+                        const selectedRoleIds = (item.roles || [])
+                          .map((roleName) =>
+                            roleOptions.find((role) => role.role_name === roleName),
+                          )
+                          .filter(Boolean)
+                          .map((role) => String(role.id));
 
-                      setForm({
-                        id: String(item.id),
-                        name: item.name || "",
-                        email: item.email || "",
-                        contact: item.contact || "",
-                        gender: item.gender || "",
-                        password: "",
-                        role_ids: selectedRoleIds,
-                        image_file: null,
-                      });
-                      setFormError("");
-                      setModalOpen(true);
-                    }}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
-                      <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
-                      <path d="M2 13.5h12" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-icon btn-soft-danger btn-sm"
-                    aria-label="Delete user"
-                    onClick={() =>
-                      setDeleteTarget({
-                        id: item.id,
-                        label: item.name,
-                      })
-                    }
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
-                      <path d="M3 4h10" />
-                      <path d="M6 4V3h4v1" />
-                      <path d="M5 4v8M11 4v8" />
-                      <rect x="4" y="4" width="8" height="9" rx="1" />
-                    </svg>
-                  </button>
+                        setForm({
+                          id: String(item.id),
+                          name: item.name || "",
+                          email: item.email || "",
+                          contact: item.contact || "",
+                          gender: item.gender || "",
+                          password: "",
+                          role_ids: selectedRoleIds,
+                          image_file: null,
+                        });
+                        setFormError("");
+                        setModalOpen(true);
+                      }}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
+                        <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
+                        <path d="M2 13.5h12" />
+                      </svg>
+                    </button>
+                  ) : null}
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-soft-danger btn-sm"
+                      aria-label="Delete user"
+                      onClick={() =>
+                        setDeleteTarget({
+                          id: item.id,
+                          label: item.name,
+                        })
+                      }
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
+                        <path d="M3 4h10" />
+                        <path d="M6 4V3h4v1" />
+                        <path d="M5 4v8M11 4v8" />
+                        <rect x="4" y="4" width="8" height="9" rx="1" />
+                      </svg>
+                    </button>
+                  ) : null}
+                  {!canCreate && !canDelete ? "-" : null}
                 </div>,
               ])}
               sortable

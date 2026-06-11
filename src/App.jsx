@@ -10,11 +10,13 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { AlertMessage, FileField, formatDate, TextField } from "./components/access/AccessShared.jsx";
-import { formatCurrency, parseAmountNumeric } from "./formatAmount.js";
+import { formatCurrency, formatCurrencyAmount, parseAmountNumeric } from "./formatAmount.js";
 import ManagePermissionsPage from "./components/access/ManagePermissionsPage.jsx";
 import ManageRolesPage from "./components/access/ManageRolesPage.jsx";
+import ManageSmtpSenderProfilesPage from "./components/access/ManageSmtpSenderProfilesPage.jsx";
 import ManageUsersPage from "./components/access/ManageUsersPage.jsx";
 import UsersAccessLayout from "./components/access/UsersAccessLayout.jsx";
+import AdditionalSettingsLayout from "./components/settings/AdditionalSettingsLayout.jsx";
 import BookingsLayout from "./components/bookings/BookingsLayout.jsx";
 import BookingsListPage from "./components/bookings/BookingsListPage.jsx";
 import CreateBookingPage from "./components/bookings/CreateBookingPage.jsx";
@@ -25,40 +27,34 @@ import ManageVendorsPage from "./components/bookings/ManageVendorsPage.jsx";
 import ManageTravelersPage from "./components/bookings/ManageTravelersPage.jsx";
 import CustomersLayout from "./components/customers/CustomersLayout.jsx";
 import ManageCustomersPage from "./components/customers/ManageCustomersPage.jsx";
-import ManagePassportDetailsPage from "./components/customers/ManagePassportDetailsPage.jsx";
-import ManageVisaDetailsPage from "./components/customers/ManageVisaDetailsPage.jsx";
 import ManageTravelerDocumentsPage from "./components/customers/ManageTravelerDocumentsPage.jsx";
 import ManageTravelerPreferencesPage from "./components/customers/ManageTravelerPreferencesPage.jsx";
 import MastersLayout from "./components/masters/MastersLayout.jsx";
 import ManageLookupMasterPage from "./components/masters/ManageLookupMasterPage.jsx";
 import NotFoundPage from "./components/NotFoundPage.jsx";
+import { DashboardOverview } from "./components/dashboard/DashboardOverview.jsx";
+import {
+  getBookingTimestamp,
+  getPaymentTimestamp,
+} from "./components/dashboard/dashboardMetrics.js";
 import { normalizePaymentLineStatusForForm } from "./components/bookings/BookingsShared.jsx";
 import CustomerPaymentsPage from "./components/payments/CustomerPaymentsPage.jsx";
 import PaymentsLayout from "./components/payments/PaymentsLayout.jsx";
 import VendorPaymentsPage from "./components/payments/VendorPaymentsPage.jsx";
-
-function resolveApiBase() {
-  const fromEnv = import.meta.env.VITE_API_BASE_URL;
-  if (fromEnv) {
-    return normalizeApiBase(fromEnv);
-  }
-  // Dev + no env: same-origin /api/v1 via Vite proxy → FastAPI (see vite.config.js).
-  if (import.meta.env.DEV) {
-    return "/api/v1";
-  }
-  // Production build served without proxy: browser must call API host directly.
-  return "http://127.0.0.1:8000/api/v1";
-}
+import CustomerLedgerReportPage from "./components/reports/CustomerLedgerReportPage.jsx";
+import MisReportPage from "./components/reports/MisReportPage.jsx";
+import ReportsLayout from "./components/reports/ReportsLayout.jsx";
+import TabularReportPage from "./components/reports/TabularReportPage.jsx";
+import { REPORT_ROUTES } from "./components/reports/ReportsShared.jsx";
+import { getApiOrigin, resolveApiBase } from "./apiOrigin.js";
 
 const API_BASE = resolveApiBase();
 const API_ORIGIN = getApiOrigin(API_BASE);
 const TOKEN_KEY = "travel_agency_token";
 const USER_KEY = "travel_agency_user";
 
-const paymentStatusOptions = ["Pending", "Paid"];
+const paymentStatusOptions = ["Pending"];
 const SUPER_ADMIN_ROLE = "super admin";
-const BOOKING_AGENT_ROLE = "booking agent";
-const ACCOUNTANT_ROLE = "accountant";
 
 function normalizeNames(values) {
   return new Set((values || []).map((value) => String(value || "").trim().toLowerCase()));
@@ -72,25 +68,14 @@ function hasPermission(user, permissionSlug) {
   return normalizeNames(user?.permissions).has(String(permissionSlug).trim().toLowerCase());
 }
 
+/** CRUD UI flags from explicit permission slugs only (no role bypass). */
 function getCrudCapability(user, resourceName) {
-  const isSuperAdmin = hasRole(user, SUPER_ADMIN_ROLE);
-  if (isSuperAdmin) {
-    return {
-      view: true,
-      create: true,
-      update: true,
-      delete: true,
-      canAccess: true,
-    };
-  }
-
   const capability = {
     view: hasPermission(user, `view_${resourceName}`),
     create: hasPermission(user, `create_${resourceName}`),
     update: hasPermission(user, `update_${resourceName}`),
     delete: hasPermission(user, `delete_${resourceName}`),
   };
-
   return {
     ...capability,
     canAccess: capability.view || capability.create || capability.update || capability.delete,
@@ -103,28 +88,28 @@ function getUserCapabilities(user) {
   const traveler = getCrudCapability(user, "traveler");
   const paymentMode = getCrudCapability(user, "payment_mode");
   const productType = getCrudCapability(user, "product_type");
+  const access = {
+    createUser: hasPermission(user, "create_user"),
+    deleteUser: hasPermission(user, "delete_user"),
+  };
   const canAccessBookingsList =
-    isSuperAdmin ||
-    hasRole(user, BOOKING_AGENT_ROLE) ||
     hasPermission(user, "create_booking") ||
-    hasPermission(user, "cancel_booking");
+    hasPermission(user, "cancel_booking") ||
+    hasPermission(user, "close_booking") ||
+    hasPermission(user, "reopen_booking");
   const canAccessBookings =
     canAccessBookingsList ||
     traveler.canAccess ||
     paymentMode.canAccess ||
     productType.canAccess;
-  const canCreateBooking =
-    isSuperAdmin ||
-    hasRole(user, BOOKING_AGENT_ROLE) ||
-    hasPermission(user, "create_booking");
+  const canCreateBooking = hasPermission(user, "create_booking");
   /** Bookings list: set status to Closed (Completed). Granted via `close_booking` on roles (see migrations). */
-  const canCloseBooking = isSuperAdmin || hasPermission(user, "close_booking");
+  const canCloseBooking = hasPermission(user, "close_booking");
   /** Bookings list: set status back to Open (Pending) after Closed. Granted via `reopen_booking` on roles. */
-  const canReopenBooking = isSuperAdmin || hasPermission(user, "reopen_booking");
-  const canAccessPayments =
-    isSuperAdmin || hasRole(user, ACCOUNTANT_ROLE) || hasPermission(user, "view_reports");
-  const canAccessAccess =
-    isSuperAdmin || hasPermission(user, "create_user") || hasPermission(user, "delete_user");
+  const canReopenBooking = hasPermission(user, "reopen_booking");
+  const canAccessPayments = hasPermission(user, "view_reports");
+  const canAccessReports = hasPermission(user, "view_reports");
+  const canAccessAccess = access.createUser || access.deleteUser;
   const canAccessMasters =
     paymentMode.canAccess ||
     productType.canAccess ||
@@ -137,14 +122,17 @@ function getUserCapabilities(user) {
     traveler,
     paymentMode,
     productType,
+    access,
     canAccessBookingsList,
     canAccessBookings,
     canCreateBooking,
     canCloseBooking,
     canReopenBooking,
     canAccessPayments,
+    canAccessReports,
     canAccessAccess,
     canAccessMasters,
+    canAccessSmtpSettings: hasPermission(user, "manage_smtp_settings"),
   };
 }
 
@@ -235,8 +223,8 @@ function App() {
             )
           }
         />
+        {/* Pathless layout so RR7 matches every authenticated URL (a parent with path="/" only matches "/"). */}
         <Route
-          path="/"
           element={
             <ProtectedLayout
               token={token}
@@ -250,32 +238,13 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route
             path="/dashboard"
-            element={<DashboardPage token={token} user={user} capabilities={capabilities} />}
+            element={<DashboardPage token={token} capabilities={capabilities} />}
           />
           <Route
             path="/customers"
             element={
               <RequireSectionAccess allowed={capabilities.customer.canAccess}>
-                <CustomersLayout
-                  items={[
-                    { to: "/customers/list", label: "Manage Customer" },
-                    ...(capabilities.traveler.canAccess
-                      ? [{ to: "/customers/travelers", label: "Traveler" }]
-                      : []),
-                    ...(capabilities.traveler.canAccess
-                      ? [{ to: "/customers/passports", label: "Passport Details" }]
-                      : []),
-                    ...(capabilities.traveler.canAccess
-                      ? [{ to: "/customers/visas", label: "Visa Details" }]
-                      : []),
-                    ...(capabilities.customer.canAccess && capabilities.traveler.canAccess
-                      ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
-                      : []),
-                    ...(capabilities.traveler.canAccess
-                      ? [{ to: "/customers/documents", label: "Traveler Documents" }]
-                      : []),
-                  ]}
-                />
+                <CustomersLayout />
               </RequireSectionAccess>
             }
           >
@@ -305,34 +274,8 @@ function App() {
                 </RequireSectionAccess>
               }
             />
-            <Route
-              path="passports"
-              element={
-                <RequireSectionAccess allowed={capabilities.traveler.canAccess}>
-                  <ManagePassportDetailsPage
-                    token={token}
-                    apiRequest={apiRequest}
-                    canCreate={capabilities.traveler.create}
-                    canUpdate={capabilities.traveler.update}
-                    canDelete={capabilities.traveler.delete}
-                  />
-                </RequireSectionAccess>
-              }
-            />
-            <Route
-              path="visas"
-              element={
-                <RequireSectionAccess allowed={capabilities.traveler.canAccess}>
-                  <ManageVisaDetailsPage
-                    token={token}
-                    apiRequest={apiRequest}
-                    canCreate={capabilities.traveler.create}
-                    canUpdate={capabilities.traveler.update}
-                    canDelete={capabilities.traveler.delete}
-                  />
-                </RequireSectionAccess>
-              }
-            />
+            <Route path="passports" element={<Navigate to="/customers/travelers" replace />} />
+            <Route path="visas" element={<Navigate to="/customers/travelers" replace />} />
             <Route
               path="documents"
               element={
@@ -368,18 +311,7 @@ function App() {
             path="/bookings"
             element={
               <RequireSectionAccess allowed={capabilities.canAccessBookings}>
-                <BookingsLayout
-                  items={[
-                    ...(capabilities.canAccessBookings
-                      ? [
-                          { to: "/bookings/list", label: "Bookings List" },
-                          ...(capabilities.canCreateBooking
-                            ? [{ to: "/bookings/create", label: "Create Booking" }]
-                            : []),
-                        ]
-                      : []),
-                  ]}
-                />
+                <BookingsLayout />
               </RequireSectionAccess>
             }
           >
@@ -390,6 +322,8 @@ function App() {
                   <BookingsListPage
                     token={token}
                     apiRequest={apiRequest}
+                    canCreateBooking={capabilities.canCreateBooking}
+                    canDeleteBooking={hasPermission(user, "cancel_booking")}
                     canCloseBooking={capabilities.canCloseBooking}
                     canReopenBooking={capabilities.canReopenBooking}
                   />
@@ -450,7 +384,7 @@ function App() {
                       ? [{ to: "/masters/vendors", label: "Vendors" }]
                       : []),
                     ...(capabilities.traveler.canAccess
-                      ? [{ to: "/masters/traveler-types", label: "Traveler Types" }]
+                      ? []
                       : []),
                     ...(capabilities.paymentMode.canAccess
                       ? [{ to: "/masters/payment-modes", label: "Payment Modes" }]
@@ -528,23 +462,6 @@ function App() {
                 </RequireSectionAccess>
               }
             />
-            <Route
-              path="traveler-types"
-              element={
-                <RequireSectionAccess allowed={capabilities.traveler.canAccess}>
-                  <ManageLookupMasterPage
-                    token={token}
-                    apiRequest={apiRequest}
-                    slug="traveler-types"
-                    title="Traveler Types"
-                    documentTitle="Traveler Types | Master | Travel Agency"
-                    canCreate={capabilities.traveler.create}
-                    canUpdate={capabilities.traveler.update}
-                    canDelete={capabilities.traveler.delete}
-                  />
-                </RequireSectionAccess>
-              }
-            />
           </Route>
           <Route
             path="/payments"
@@ -576,6 +493,167 @@ function App() {
             />
           </Route>
           <Route
+            path="/reports"
+            element={
+              <RequireSectionAccess allowed={capabilities.canAccessReports}>
+                <ReportsLayout />
+              </RequireSectionAccess>
+            }
+          >
+            <Route path="mis" element={<MisReportPage token={token} apiRequest={apiRequest} />} />
+            <Route
+              path="accounts-receivable"
+              element={
+                <TabularReportPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  title="Accounts Receivable"
+                  apiPath="/reports/accounts-receivable"
+                  filename="accounts-receivable.xlsx"
+                  showOverdue
+                  columns={[
+                    { key: "sr", label: "Sr" },
+                    { key: "customer_id", label: "Cust id" },
+                    { key: "customer_name", label: "Customer Name" },
+                    { key: "drc_no", label: "DRC No" },
+                    { key: "invoice_date", label: "Invoice Date" },
+                    { key: "invoice_number", label: "Invoice Number" },
+                    { key: "invoice_amount", label: "Invoice Amount" },
+                    { key: "due_date", label: "Due Date" },
+                    { key: "amount_received_date", label: "Amount Received Date" },
+                    { key: "amount_received", label: "Amount Received (₹)" },
+                    { key: "balance_due", label: "Balance Due" },
+                  ]}
+                />
+              }
+            />
+            <Route
+              path="accounts-payable"
+              element={
+                <TabularReportPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  title="Accounts Payable"
+                  apiPath="/reports/accounts-payable"
+                  filename="accounts-payable.xlsx"
+                  showOverdue
+                  columns={[
+                    { key: "sr", label: "Sr" },
+                    { key: "drc_no", label: "DRC No" },
+                    { key: "vendor_name", label: "Vendor Name" },
+                    { key: "invoice_date", label: "Invoice Date" },
+                    { key: "invoice_number", label: "Invoice Number" },
+                    { key: "invoice_amount", label: "Invoice Amount" },
+                    { key: "due_date", label: "Due Date" },
+                    { key: "payment_date", label: "Payment Date" },
+                    { key: "payment", label: "Payment (₹)" },
+                    { key: "balance_due", label: "Balance Due" },
+                  ]}
+                />
+              }
+            />
+            <Route
+              path="customer-ledger"
+              element={<CustomerLedgerReportPage token={token} apiRequest={apiRequest} />}
+            />
+            <Route
+              path="tcs"
+              element={
+                <TabularReportPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  title="TCS"
+                  apiPath="/reports/tcs"
+                  filename="tcs-report.xlsx"
+                  columns={[
+                    { key: "sr", label: "Sr no" },
+                    { key: "customer_name", label: "Name of customer" },
+                    { key: "invoice_no", label: "Invoice No" },
+                    { key: "invoice_date", label: "Date of Invoice" },
+                    { key: "invoice_amount", label: "Invoice Amount" },
+                    { key: "tcs_rate", label: "TCS @" },
+                    { key: "pan_number", label: "PAN number" },
+                  ]}
+                />
+              }
+            />
+            <Route
+              path="sales"
+              element={
+                <TabularReportPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  title="Sales Report"
+                  apiPath="/reports/sales"
+                  filename="sales-report.xlsx"
+                  columns={[
+                    { key: "sr", label: "Sr no" },
+                    { key: "date", label: "Date" },
+                    { key: "invoice_no", label: "Invoice no" },
+                    { key: "customer_name", label: "Customer Name" },
+                    { key: "drc_no", label: "DRC No" },
+                    { key: "service_type", label: "Type of service" },
+                    { key: "branch", label: "Branch" },
+                    { key: "destination", label: "Destination" },
+                    { key: "pax", label: "No of pax" },
+                    { key: "taxable_amount", label: "Invoice Amt taxable" },
+                    { key: "gst", label: "GST" },
+                    { key: "tcs", label: "TCS" },
+                    { key: "net_amount", label: "Net Amount" },
+                    { key: "amount_received", label: "Amount received" },
+                    { key: "payment_mode", label: "Mode of Payment" },
+                  ]}
+                />
+              }
+            />
+            <Route
+              path="purchase"
+              element={
+                <TabularReportPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  title="Purchase Report"
+                  apiPath="/reports/purchase"
+                  filename="purchase-report.xlsx"
+                  columns={[
+                    { key: "sr", label: "Sr no" },
+                    { key: "date", label: "Date" },
+                    { key: "invoice_no", label: "Invoice no" },
+                    { key: "vendor_name", label: "Vendor Name" },
+                    { key: "drc_no", label: "DRC No" },
+                    { key: "service_type", label: "Type of service" },
+                    { key: "invoice_amount", label: "Invoice Amt" },
+                    { key: "sales_commission", label: "sales Comm" },
+                    { key: "tds", label: "TDS" },
+                    { key: "amount_payable", label: "Amount payable" },
+                    { key: "payment_mode", label: "Mode of Payment" },
+                    { key: "download", label: "Download" },
+                  ]}
+                />
+              }
+            />
+            <Route
+              path="customer-summary"
+              element={
+                <TabularReportPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  title="Customer Report"
+                  apiPath="/reports/customer-summary"
+                  filename="customer-report.xlsx"
+                  columns={[
+                    { key: "sr", label: "Sr no" },
+                    { key: "customer_ref", label: "Cust Id" },
+                    { key: "customer_name", label: "Customer Name" },
+                    { key: "drc_no", label: "DRC No" },
+                    { key: "order_value", label: "Order value" },
+                    { key: "order_margin", label: "Order Margin" },
+                  ]}
+                />
+              }
+            />
+          </Route>
+          <Route
             path="/access"
             element={
               <RequireSectionAccess allowed={capabilities.canAccessAccess}>
@@ -583,11 +661,61 @@ function App() {
               </RequireSectionAccess>
             }
           >
-            <Route path="users" element={<ManageUsersPage token={token} apiRequest={apiRequest} />} />
-            <Route path="roles" element={<ManageRolesPage token={token} apiRequest={apiRequest} />} />
+            <Route
+              path="users"
+              element={
+                <ManageUsersPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  canCreate={capabilities.access.createUser}
+                  canDelete={capabilities.access.deleteUser}
+                />
+              }
+            />
+            <Route
+              path="roles"
+              element={
+                <ManageRolesPage
+                  token={token}
+                  apiRequest={apiRequest}
+                  canWrite={capabilities.access.createUser}
+                />
+              }
+            />
             <Route
               path="permissions"
-              element={<ManagePermissionsPage token={token} apiRequest={apiRequest} />}
+              element={
+                capabilities.access.createUser ? (
+                  <ManagePermissionsPage
+                    token={token}
+                    apiRequest={apiRequest}
+                    canWrite={capabilities.access.createUser}
+                  />
+                ) : (
+                  <Navigate to="/access/users" replace />
+                )
+              }
+            />
+            <Route
+              path="smtp-profiles"
+              element={<Navigate to="/additional-settings/smtp-profiles" replace />}
+            />
+          </Route>
+          <Route
+            path="/additional-settings"
+            element={
+              <RequireSectionAccess allowed={capabilities.canAccessSmtpSettings}>
+                <AdditionalSettingsLayout />
+              </RequireSectionAccess>
+            }
+          >
+            <Route
+              index
+              element={<Navigate to="/additional-settings/smtp-profiles" replace />}
+            />
+            <Route
+              path="smtp-profiles"
+              element={<ManageSmtpSenderProfilesPage token={token} apiRequest={apiRequest} />}
             />
           </Route>
           <Route
@@ -606,8 +734,8 @@ function App() {
               />
             }
           />
+          <Route path="*" element={<NotFoundPage token={token} />} />
         </Route>
-        <Route path="*" element={<NotFoundPage token={token} />} />
       </Routes>
     </BrowserRouter>
   );
@@ -636,14 +764,6 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
   if (!token || !user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-
-  const accessItems = capabilities.canAccessAccess
-    ? [
-        { to: "/access/users", label: "Manage User" },
-        { to: "/access/roles", label: "Manage Role" },
-        { to: "/access/permissions", label: "Manage Permission" },
-      ]
-    : [];
 
   return (
     <div id="layout-wrapper">
@@ -697,6 +817,12 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                     </span>
                   </NavLink>
                 ) : null}
+                {capabilities.canAccessSmtpSettings ? (
+                  <NavLink className="dropdown-item d-block" to="/additional-settings/smtp-profiles">
+                    <i className="uil uil-envelope-alt font-size-18 align-middle me-1 text-muted"></i>
+                    <span className="align-middle">Additional settings</span>
+                  </NavLink>
+                ) : null}
                 <button type="button" className="dropdown-item" onClick={onLogout}>
                   <i className="uil uil-sign-out-alt font-size-18 align-middle me-1 text-muted"></i>
                   <span className="align-middle">Sign out</span>
@@ -711,29 +837,27 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
               <div className="collapse navbar-collapse show" id="topnav-menu-content">
                 <ul className="navbar-nav">
                   <HorizontalNavLink to="/dashboard" icon="dashboard" label="Dashboard" />
-                  <HorizontalNavDropdown
-                    icon="customers"
-                    label="Customer"
-                    activePrefix="/customers"
-                    items={[
-                      { to: "/customers/list", label: "Manage Customer" },
-                      ...(capabilities.traveler.canAccess
-                        ? [{ to: "/customers/travelers", label: "Traveler" }]
-                        : []),
-                      ...(capabilities.traveler.canAccess
-                        ? [{ to: "/customers/passports", label: "Passport Details" }]
-                        : []),
-                      ...(capabilities.traveler.canAccess
-                        ? [{ to: "/customers/visas", label: "Visa Details" }]
-                        : []),
-                      ...(capabilities.customer.canAccess && capabilities.traveler.canAccess
-                        ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
-                        : []),
-                      ...(capabilities.traveler.canAccess
-                        ? [{ to: "/customers/documents", label: "Traveler Documents" }]
-                        : []),
-                    ]}
-                  />
+                  {capabilities.customer.canAccess || capabilities.traveler.canAccess ? (
+                    <HorizontalNavDropdown
+                      icon="customers"
+                      label="Customer"
+                      activePrefix="/customers"
+                      items={[
+                        ...(capabilities.customer.canAccess
+                          ? [{ to: "/customers/list", label: "Manage Customer" }]
+                          : []),
+                        ...(capabilities.traveler.canAccess
+                          ? [{ to: "/customers/travelers", label: "Traveler" }]
+                          : []),
+                        ...(capabilities.customer.canAccess && capabilities.traveler.canAccess
+                          ? [{ to: "/customers/preferences", label: "Traveler Preferences" }]
+                          : []),
+                        ...(capabilities.traveler.canAccess
+                          ? [{ to: "/customers/documents", label: "Traveler Documents" }]
+                          : []),
+                      ]}
+                    />
+                  ) : null}
                   {capabilities.canAccessBookings ? (
                     <HorizontalNavDropdown
                       icon="bookings"
@@ -744,6 +868,38 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                         ...(capabilities.canCreateBooking
                           ? [{ to: "/bookings/create", label: "Create Booking" }]
                           : []),
+                      ]}
+                    />
+                  ) : null}
+                  {capabilities.canAccessReports ? (
+                    <HorizontalNavDropdown
+                      icon="bookings"
+                      label="Reports"
+                      activePrefix="/reports"
+                      items={REPORT_ROUTES}
+                    />
+                  ) : null}
+                  {capabilities.canAccessAccess ? (
+                    <HorizontalNavDropdown
+                      icon="access"
+                      label="Users & Access"
+                      activePrefix="/access"
+                      items={[
+                        { to: "/access/users", label: "Manage User" },
+                        { to: "/access/roles", label: "Manage Role" },
+                        ...(capabilities.access.createUser
+                          ? [{ to: "/access/permissions", label: "Manage Permission" }]
+                          : []),
+                      ]}
+                    />
+                  ) : null}
+                  {capabilities.canAccessSmtpSettings ? (
+                    <HorizontalNavDropdown
+                      icon="additionalSettings"
+                      label="Additional settings"
+                      activePrefix="/additional-settings"
+                      items={[
+                        { to: "/additional-settings/smtp-profiles", label: "SMTP profiles" },
                       ]}
                     />
                   ) : null}
@@ -762,7 +918,7 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                           ? [{ to: "/masters/vendors", label: "Vendors" }]
                           : []),
                         ...(capabilities.traveler.canAccess
-                          ? [{ to: "/masters/traveler-types", label: "Traveler Types" }]
+                          ? []
                           : []),
                         ...(capabilities.paymentMode.canAccess
                           ? [{ to: "/masters/payment-modes", label: "Payment Modes" }]
@@ -773,25 +929,6 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
                       ]}
                     />
                   ) : null}
-                  <HorizontalNavDropdown
-                    icon="payments"
-                    label="Payments"
-                    activePrefix="/payments"
-                    items={[
-                      { to: "/payments/customer", label: "Customer Payment" },
-                      { to: "/payments/vendor", label: "Vendor Payment" },
-                    ]}
-                  />
-                  <HorizontalNavDropdown
-                    icon="access"
-                    label="Users & Access"
-                    activePrefix="/access"
-                    items={[
-                      { to: "/access/users", label: "Manage User" },
-                      { to: "/access/roles", label: "Manage Role" },
-                      { to: "/access/permissions", label: "Manage Permission" },
-                    ]}
-                  />
                 </ul>
               </div>
             </nav>
@@ -806,8 +943,10 @@ function ProtectedLayout({ token, user, capabilities, authLoading, onLogout }) {
           </div>
         </div>
         <footer className="footer">
-          <div className="container-fluid text-center">
-            {new Date().getFullYear()} Dreamcatcherz Travel & Events by accven
+          <div className="container-fluid">
+            <p className="footer__text mb-0">
+              {new Date().getFullYear()} Dreamcatcherz Travel & Events by accven
+            </p>
           </div>
         </footer>
       </div>
@@ -899,6 +1038,12 @@ function MenuIcon({ name }) {
         <circle cx="9" cy="8" r="3"></circle>
         <path d="M4 19c0-2.8 2.2-5 5-5s5 2.2 5 5"></path>
         <path d="M17 8h4M19 6v4"></path>
+      </svg>
+    ),
+    additionalSettings: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+        <path d="M3 7l9 6 9-6"></path>
       </svg>
     ),
   };
@@ -1042,15 +1187,15 @@ function LoginPage({ onLogin, authLoading }) {
   );
 }
 
-function DashboardPage({ token, user, capabilities }) {
+function DashboardPage({ token, capabilities }) {
   const [state, setState] = useState({
     loading: true,
     error: "",
     bookings: [],
     payments: [],
     vendorPayments: [],
-    customerTotal: 0,
   });
+  const [chartPeriod, setChartPeriod] = useState("year");
 
   useEffect(() => {
     document.title = "Dashboard | Travel Agency";
@@ -1070,11 +1215,8 @@ function DashboardPage({ token, user, capabilities }) {
       capabilities.canAccessPayments
         ? apiRequest("/vendor-payments?page=1&page_size=100", { token })
         : Promise.resolve({ items: [] }),
-      capabilities.customer.canAccess
-        ? apiRequest("/customers?page=1&page_size=1", { token })
-        : Promise.resolve({ total: 0 }),
     ])
-      .then(([bookings, payments, vendorPayments, customersPage]) => {
+      .then(([bookings, payments, vendorPayments]) => {
         if (!active) {
           return;
         }
@@ -1084,7 +1226,6 @@ function DashboardPage({ token, user, capabilities }) {
           bookings: bookings.items,
           payments: payments.items,
           vendorPayments: vendorPayments.items,
-          customerTotal: Number(customersPage.total ?? 0),
         });
       })
       .catch((requestError) => {
@@ -1101,73 +1242,51 @@ function DashboardPage({ token, user, capabilities }) {
     return () => {
       active = false;
     };
-  }, [
-    capabilities.canAccessBookings,
-    capabilities.canAccessPayments,
-    capabilities.customer.canAccess,
-    token,
-  ]);
+  }, [capabilities.canAccessBookings, capabilities.canAccessPayments, token]);
 
-  const totalReceived = state.payments.reduce(
-    (sum, payment) => sum + parseAmountNumeric(payment.amount),
-    0,
+  const recentBookings = useMemo(
+    () =>
+      [...state.bookings]
+        .sort(
+          (a, b) =>
+            (getBookingTimestamp(b)?.getTime() || 0) - (getBookingTimestamp(a)?.getTime() || 0),
+        )
+        .slice(0, 5),
+    [state.bookings],
   );
-  const totalVendorPaid = state.vendorPayments.reduce(
-    (sum, payment) => sum + parseAmountNumeric(payment.amount),
-    0,
+
+  const recentPayments = useMemo(
+    () =>
+      [...state.payments]
+        .sort(
+          (a, b) =>
+            (getPaymentTimestamp(b)?.getTime() || 0) - (getPaymentTimestamp(a)?.getTime() || 0),
+        )
+        .slice(0, 5),
+    [state.payments],
   );
-  const pendingBookings = state.bookings.filter((booking) =>
-    !["confirmed", "paid"].includes((booking.status || "").toLowerCase()),
-  ).length;
+
+  const pendingBookings = useMemo(() => {
+    return state.bookings.filter((booking) => {
+      return !["confirmed", "paid"].includes((booking.status || "").toLowerCase());
+    }).length;
+  }, [state.bookings]);
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        subtitle="Overview of bookings and payment activity"
-      />
       <AlertMessage message={state.error} variant="danger" />
       {state.loading ? (
         <CardLoader message="Loading dashboard metrics..." />
       ) : (
         <>
-          <div className="row g-4 mb-4 ta-dashboard">
-            <StatCard
-              label="Signed in user"
-              value={user?.name || user?.email || "-"}
-              actionTo="/profile"
-              actionLabel="View profile"
-            />
-            {capabilities.customer.canAccess ? (
-              <StatCard
-                label="Customers"
-                value={String(state.customerTotal)}
-                actionTo="/customers/list"
-                actionLabel="Manage customers"
-              />
-            ) : null}
-            {capabilities.canAccessBookings ? (
-              <StatCard
-                label="Total bookings"
-                value={String(state.bookings.length)}
-                actionTo="/bookings/list"
-                actionLabel="View bookings"
-              />
-            ) : null}
-            {capabilities.canAccessPayments ? (
-              <StatCard
-                label="Customer payments"
-                value={formatCurrency(totalReceived)}
-                actionTo="/payments/customer"
-                actionLabel="Customer payments"
-              />
-            ) : null}
-            {capabilities.canAccessPayments ? (
-              <StatCard
-                label="Vendor payments"
-                value={formatCurrency(totalVendorPaid)}
-                actionTo="/payments/vendor"
-                actionLabel="Vendor payments"
+          <div className="ta-dashboard mb-2">
+            {capabilities.canAccessBookings || capabilities.canAccessPayments ? (
+              <DashboardOverview
+                bookings={state.bookings}
+                payments={state.payments}
+                vendorPayments={state.vendorPayments}
+                chartPeriod={chartPeriod}
+                onChartPeriodChange={setChartPeriod}
               />
             ) : null}
           </div>
@@ -1189,11 +1308,6 @@ function DashboardPage({ token, user, capabilities }) {
                         <div className="badge bg-warning-subtle text-warning ta-status-badge">
                           Pending: {pendingBookings}
                         </div>
-                        {capabilities.customer.canAccess ? (
-                          <NavLink to="/customers/list" className="btn btn-primary btn-sm">
-                            Customers
-                          </NavLink>
-                        ) : null}
                         <NavLink to="/bookings/create" className="btn btn-primary btn-sm">
                           Create booking
                         </NavLink>
@@ -1204,17 +1318,14 @@ function DashboardPage({ token, user, capabilities }) {
                     </div>
                     <div className="mt-3">
                     <SimpleTable
-                      columns={["ID", "DRC No", "Travel Start Date", "Status", "Total"]}
-                      rows={state.bookings
-                        .slice(-5)
-                        .reverse()
-                        .map((booking) => [
-                          `#${booking.id}`,
-                          booking.drc_no || "-",
-                          formatDate(booking.travel_start_date),
-                          <StatusBadge key={`status-${booking.id}`} status={booking.status} />,
-                          formatCurrency(booking.total_amount),
-                        ])}
+                      columns={["ID", "DRC No", "Travel Start Date", "Status", "Total (₹)"]}
+                      rows={recentBookings.map((booking) => [
+                        `#${booking.id}`,
+                        booking.drc_no || "-",
+                        formatDate(booking.travel_start_date),
+                        <StatusBadge key={`status-${booking.id}`} status={booking.status} />,
+                        formatCurrencyAmount(booking.total_amount),
+                      ])}
                       emptyMessage="No bookings found."
                     />
                     </div>
@@ -1235,28 +1346,23 @@ function DashboardPage({ token, user, capabilities }) {
                           Latest customer payments received.
                         </p>
                       </div>
-                      <div className="d-flex flex-wrap gap-2">
-                        <NavLink to="/payments/vendor" className="btn btn-primary btn-sm">
-                          Vendor payments
-                        </NavLink>
-                        <NavLink to="/payments/customer" className="btn btn-primary btn-sm">
-                          Customer payments
-                        </NavLink>
-                      </div>
                     </div>
                     <div className="mt-3">
                     <SimpleTable
-                      columns={["ID", "Booking", "Method", "Amount", "Status"]}
-                      rows={state.payments
-                        .slice(-5)
-                        .reverse()
-                        .map((payment) => [
-                          `#${payment.id}`,
-                          `Booking #${payment.booking_id}`,
-                          payment.payment_method,
-                          formatCurrency(payment.amount),
-                          <StatusBadge key={`payment-${payment.id}`} status={payment.status} />,
-                        ])}
+                      columns={["ID", "Booking", "Method", "Amount (₹)", "Status"]}
+                      rows={recentPayments.map((payment) => [
+                        `#${payment.id}`,
+                        <NavLink
+                          key={`bk-${payment.id}`}
+                          to={`/bookings/edit/${payment.booking_id}`}
+                          className="ta-link-booking"
+                        >
+                          Booking #{payment.booking_id}
+                        </NavLink>,
+                        payment.payment_method,
+                        formatCurrencyAmount(payment.amount),
+                        <StatusBadge key={`payment-${payment.id}`} status={payment.status} />,
+                      ])}
                       emptyMessage="No payments found."
                     />
                     </div>
@@ -2241,26 +2347,6 @@ function PageHeader({ title, subtitle }) {
   );
 }
 
-function StatCard({ label, value, actionTo, actionLabel }) {
-  return (
-    <div className="col-md-6 col-xl-3 d-flex">
-      <div className="card ta-dashboard-stat-card flex-grow-1 w-100 h-100">
-        <div className="card-body d-flex flex-column">
-          <p className="ta-stat-label">{label}</p>
-          <h4 className="mb-1 mt-1">{value}</h4>
-          {actionTo && actionLabel ? (
-            <NavLink to={actionTo} className="btn btn-primary btn-sm w-100 mt-auto">
-              {actionLabel}
-            </NavLink>
-          ) : (
-            <p className="ta-card-muted mb-0 mt-auto small">Live backend data</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SimpleTable({ columns, rows, emptyMessage }) {
   return (
     <div className="table-responsive">
@@ -2486,6 +2572,10 @@ function formatHttpErrorMessage(response, data, rawText) {
   const code = response.status;
   const badge = Number.isFinite(code) && code > 0 ? `[HTTP ${code}] ` : "";
 
+  if (code === 403) {
+    return "You do not have permission for this module.";
+  }
+
   if (code === 502 || code === 503) {
     return (
       badge +
@@ -2609,27 +2699,11 @@ function apiRequest(path, options = {}) {
     });
 }
 
-function normalizeApiBase(value) {
-  return String(value || "").replace(/\/+$/, "");
-}
-
 function buildApiUrl(path) {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path)
     : `/${String(path || "")}`;
   return `${API_BASE}${normalizedPath}`;
-}
-
-function getApiOrigin(value) {
-  const s = String(value || "");
-  if (!s || s.startsWith("/")) {
-    return typeof window !== "undefined" ? window.location.origin : "";
-  }
-  try {
-    return new URL(s).origin;
-  } catch {
-    return typeof window !== "undefined" ? window.location.origin : "";
-  }
 }
 
 function buildAssetUrl(path) {

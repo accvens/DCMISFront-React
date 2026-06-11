@@ -55,6 +55,7 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
   const [countries, setCountries] = useState([]);
+  const [customerFilterId, setCustomerFilterId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
 
@@ -91,7 +92,14 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
 
   useEffect(() => {
     setPage(1);
-  }, [searchInput]);
+  }, [searchInput, customerFilterId]);
+
+  function buildListUrl() {
+    const base = buildPagedSearchUrl("/visas", page, pageSize, debouncedSearch);
+    const cid = String(customerFilterId || "").trim();
+    if (!cid) return base;
+    return `${base}&customer_id=${encodeURIComponent(cid)}`;
+  }
 
   useEffect(() => {
     let active = true;
@@ -99,9 +107,14 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
     setError("");
 
     Promise.all([
-      apiRequest(buildPagedSearchUrl("/visas", page, pageSize, debouncedSearch), { token }),
+      apiRequest(buildListUrl(), { token }),
       // Backend pagination validates page_size <= 500
-      apiRequest("/travelers?page=1&page_size=100", { token }),
+      apiRequest(
+        String(customerFilterId || "").trim()
+          ? `/travelers?page=1&page_size=100&customer_id=${encodeURIComponent(String(customerFilterId).trim())}`
+          : "/travelers?page=1&page_size=100",
+        { token },
+      ),
     ])
       .then(([visasResponse, travelersResponse]) => {
         if (!active) return;
@@ -118,7 +131,7 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token, customerFilterId]);
 
   function resolveTravelerLabel(travelerId) {
     const t = travelers.find((item) => String(item.id) === String(travelerId));
@@ -129,13 +142,21 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add visas.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update visas.");
+      return;
+    }
     const validationError = validateVisaForm(form);
     if (validationError) {
       setFormError(validationError);
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(form.id ? `/visas/${form.id}` : "/visas", {
@@ -166,6 +187,10 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
   }
 
   async function handleDelete(visaId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete visas.");
+      return;
+    }
     try {
       await apiRequest(`/visas/${visaId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -183,24 +208,46 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Visa Details"
-        subtitle="Create and maintain visa details linked to travelers."
+        subtitle=""
         toolbarExtra={
-          <ListSearchInput
-            id="visas-list-search"
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder="Search traveler, customer, country, number..."
-          />
-        }
-        actionLabel={canCreate ? "Add Visa" : undefined}
-        onAction={
-          canCreate
-            ? () => {
-                setForm(createEmptyVisaForm());
-                setFormError("");
-                setModalOpen(true);
-              }
-            : undefined
+          <div className="ta-travelers-toolbar">
+            <CustomerAutocomplete
+              value={customerFilterId}
+              onChange={setCustomerFilterId}
+              customers={[]}
+              apiRequest={apiRequest}
+              token={token}
+              required={false}
+              wrapperClassName="ta-travelers-toolbar__customer"
+              inputClassName="form-control form-control-sm"
+            />
+            <div className="ta-travelers-toolbar__search">
+              <ListSearchInput
+                id="visas-list-search"
+                value={searchInput}
+                onChange={setSearchInput}
+                placeholder="Search traveler, customer, country, number..."
+              />
+            </div>
+            {String(customerFilterId || "").trim() ? (
+              <button type="button" className="btn btn-sm btn-light" onClick={() => setCustomerFilterId("")}>
+                Clear
+              </button>
+            ) : null}
+            {canCreate ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setForm((c) => ({ ...createEmptyVisaForm(), customer_id: c.customer_id || customerFilterId }));
+                  setFormError("");
+                  setModalOpen(true);
+                }}
+              >
+                Add Visa
+              </button>
+            ) : null}
+          </div>
         }
       >
         {loading ? (
@@ -315,7 +362,6 @@ function ManageVisaDetailsPage({ token, apiRequest, canCreate, canUpdate, canDel
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
           <CustomerAutocomplete
-            label="Customer"
             value={form.customer_id}
             required
             onChange={(value) =>

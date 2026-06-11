@@ -69,12 +69,20 @@ function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDe
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add payment modes.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update payment modes.");
+      return;
+    }
     if (!form.payment_mode_name.trim()) {
       setFormError("Payment mode name is required.");
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(
@@ -106,6 +114,10 @@ function ManagePaymentModesPage({ token, apiRequest, canCreate, canUpdate, canDe
   }
 
   async function handleDelete(paymentModeId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete payment modes.");
+      return;
+    }
     try {
       await apiRequest(`/masters/payment-modes/${paymentModeId}`, { method: "DELETE", token });
       setDeleteTarget(null);

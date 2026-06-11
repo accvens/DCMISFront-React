@@ -11,6 +11,7 @@ import {
   validateBookingForm,
 } from "./BookingsShared.jsx";
 import { BookingEditorChrome } from "./BookingEditorChrome.jsx";
+import { BookingPostSaveNextModal } from "./BookingPostSaveNextModal.jsx";
 import OrderEntryBookingForm, { BOOKING_WIZARD_LAST_STEP_INDEX } from "./OrderEntryBookingForm.jsx";
 
 function EditBookingPage({
@@ -54,6 +55,8 @@ function EditBookingPage({
     return createFlow.fromCreate ? "Booking created. Further saves update this booking." : "";
   });
   const [wizardStep, setWizardStep] = useState(0);
+  const [showPostVendorSaveModal, setShowPostVendorSaveModal] = useState(false);
+  const [lastVendorStepSaveIsDraft, setLastVendorStepSaveIsDraft] = useState(false);
 
   useEffect(() => {
     document.title = "Edit Booking | Travel Agency";
@@ -114,11 +117,10 @@ function EditBookingPage({
     };
   }, [apiRequest, bookingId, token]);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function performSave(wizardStepFromForm) {
     setFormError("");
     setSuccessMessage("");
-    const fullError = validateBookingForm(form);
+    const fullError = validateBookingForm(form, { travelers: state.travelers });
     let saveIncomplete = false;
     if (fullError) {
       const partialError = validateBookingDraft(form);
@@ -130,6 +132,10 @@ function EditBookingPage({
     }
     setSubmitting(true);
     const id = Number(bookingId);
+    const effectiveStep =
+      typeof wizardStepFromForm === "number" && Number.isFinite(wizardStepFromForm)
+        ? Math.floor(wizardStepFromForm)
+        : wizardStep;
 
     try {
       const updated = await apiRequest(`/bookings/${id}`, {
@@ -139,8 +145,9 @@ function EditBookingPage({
       });
       setState((s) => ({ ...s, booking: updated }));
       setForm(createBookingFormFromBooking(updated, { catalogueProducts: state.products || [] }));
-      if (wizardStep === BOOKING_WIZARD_LAST_STEP_INDEX) {
-        navigate("/bookings/list");
+      if (effectiveStep === BOOKING_WIZARD_LAST_STEP_INDEX) {
+        setLastVendorStepSaveIsDraft(saveIncomplete);
+        setShowPostVendorSaveModal(true);
         return;
       }
       setSuccessMessage(
@@ -177,6 +184,22 @@ function EditBookingPage({
     );
   }
 
+  function handlePostVendorSaveContinueEditing() {
+    setShowPostVendorSaveModal(false);
+    setSuccessMessage(
+      lastVendorStepSaveIsDraft
+        ? "Booking saved. Add the remaining details when you are ready."
+        : "Booking updated successfully.",
+    );
+    setLastVendorStepSaveIsDraft(false);
+  }
+
+  function handlePostVendorSaveCompleteBooking() {
+    setShowPostVendorSaveModal(false);
+    setLastVendorStepSaveIsDraft(false);
+    navigate("/bookings/list");
+  }
+
   return (
     <>
       {state.loading || !form ? (
@@ -184,8 +207,13 @@ function EditBookingPage({
           <CardLoader message="Loading booking…" />
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="ta-booking-editor-form">
-          <BookingEditorChrome mode="edit" bookingId={bookingId}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+          className="ta-booking-editor-form"
+        >
+          <BookingEditorChrome>
             <BookingAlertMessage
               message={state.error}
               variant="danger"
@@ -217,14 +245,20 @@ function EditBookingPage({
               setProductTypesList={(fn) => setState((s) => ({ ...s, productTypes: fn(s.productTypes) }))}
               paymentModes={state.paymentModes || []}
               submitting={submitting}
-              submitLabel="Save booking"
+              submitLabel="Save"
               savingLabel="Saving…"
               onWizardStepChange={setWizardStep}
+              onSaveBooking={performSave}
               validationError={formError}
             />
           </BookingEditorChrome>
         </form>
       )}
+      <BookingPostSaveNextModal
+        open={showPostVendorSaveModal}
+        onContinueEditing={handlePostVendorSaveContinueEditing}
+        onCompleteBooking={handlePostVendorSaveCompleteBooking}
+      />
     </>
   );
 }

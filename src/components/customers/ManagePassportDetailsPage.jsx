@@ -26,6 +26,7 @@ function createEmptyPassportForm() {
     customer_id: "",
     traveler_id: "",
     passport_number: "",
+    name_as_per_passport: "",
     issue_country_id: "",
     issue_date: "",
     expiry_date: "",
@@ -58,14 +59,12 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
   const [countries, setCountries] = useState([]);
+  const [customerFilterId, setCustomerFilterId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
 
   const countryOptions = useMemo(
-    () => [
-      { value: "", label: "—" },
-      ...countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
-    ],
+    () => countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
     [countries],
   );
 
@@ -77,15 +76,11 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
     let active = true;
     apiRequest("/masters/countries/options", { token })
       .then((data) => {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setCountries(Array.isArray(data) ? data : []);
       })
       .catch(() => {
-        if (active) {
-          setCountries([]);
-        }
+        if (active) setCountries([]);
       });
     return () => {
       active = false;
@@ -94,7 +89,14 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
 
   useEffect(() => {
     setPage(1);
-  }, [searchInput]);
+  }, [searchInput, customerFilterId]);
+
+  function buildListUrl() {
+    const base = buildPagedSearchUrl("/passports", page, pageSize, debouncedSearch);
+    const cid = String(customerFilterId || "").trim();
+    if (!cid) return base;
+    return `${base}&customer_id=${encodeURIComponent(cid)}`;
+  }
 
   useEffect(() => {
     let active = true;
@@ -102,9 +104,14 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
     setError("");
 
     Promise.all([
-      apiRequest(buildPagedSearchUrl("/passports", page, pageSize, debouncedSearch), { token }),
+      apiRequest(buildListUrl(), { token }),
       // Backend pagination validates page_size <= 500
-      apiRequest("/travelers?page=1&page_size=100", { token }),
+      apiRequest(
+        String(customerFilterId || "").trim()
+          ? `/travelers?page=1&page_size=100&customer_id=${encodeURIComponent(String(customerFilterId).trim())}`
+          : "/travelers?page=1&page_size=100",
+        { token },
+      ),
     ])
       .then(([passportsResponse, travelersResponse]) => {
         if (!active) return;
@@ -121,7 +128,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token, customerFilterId]);
 
   function resolveTravelerLabel(travelerId) {
     const t = travelers.find((item) => String(item.id) === String(travelerId));
@@ -132,13 +139,21 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add passports.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update passports.");
+      return;
+    }
     const validationError = validatePassportForm(form);
     if (validationError) {
       setFormError(validationError);
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(form.id ? `/passports/${form.id}` : "/passports", {
@@ -151,6 +166,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
           issue_date: form.issue_date || null,
           expiry_date: form.expiry_date || null,
           place_of_issue: form.place_of_issue.trim() || null,
+          name_as_per_passport: form.name_as_per_passport.trim() || null,
         },
       });
       setForm(createEmptyPassportForm());
@@ -169,6 +185,10 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
   }
 
   async function handleDelete(passportId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete passports.");
+      return;
+    }
     try {
       await apiRequest(`/passports/${passportId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -186,24 +206,46 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Passport Details"
-        subtitle="Create and maintain passport details linked to travelers."
+        subtitle=""
         toolbarExtra={
-          <ListSearchInput
-            id="passports-list-search"
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder="Search traveler, customer, passport number, country..."
-          />
-        }
-        actionLabel={canCreate ? "Add Passport" : undefined}
-        onAction={
-          canCreate
-            ? () => {
-                setForm(createEmptyPassportForm());
-                setFormError("");
-                setModalOpen(true);
-              }
-            : undefined
+          <div className="ta-travelers-toolbar">
+            <CustomerAutocomplete
+              value={customerFilterId}
+              onChange={setCustomerFilterId}
+              customers={[]}
+              apiRequest={apiRequest}
+              token={token}
+              required={false}
+              wrapperClassName="ta-travelers-toolbar__customer"
+              inputClassName="form-control form-control-sm"
+            />
+            <div className="ta-travelers-toolbar__search">
+              <ListSearchInput
+                id="passports-list-search"
+                value={searchInput}
+                onChange={setSearchInput}
+                placeholder="Search traveler, customer, passport number, country..."
+              />
+            </div>
+            {String(customerFilterId || "").trim() ? (
+              <button type="button" className="btn btn-sm btn-light" onClick={() => setCustomerFilterId("")}>
+                Clear
+              </button>
+            ) : null}
+            {canCreate ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setForm((c) => ({ ...createEmptyPassportForm(), customer_id: c.customer_id || customerFilterId }));
+                  setFormError("");
+                  setModalOpen(true);
+                }}
+              >
+                Add Passport
+              </button>
+            ) : null}
+          </div>
         }
       >
         {loading ? (
@@ -215,7 +257,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
                 "ID",
                 "Traveler",
                 "Passport No",
-                "Issue Country",
+                "Name as per passport",
                 "Issue Date",
                 "Expiry Date",
                 "Place",
@@ -226,7 +268,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
                 `#${item.id}`,
                 resolveTravelerLabel(item.traveler_id),
                 item.passport_number || "-",
-                item.issue_country || "-",
+                item.name_as_per_passport || "-",
                 item.issue_date || "-",
                 item.expiry_date || "-",
                 item.place_of_issue || "-",
@@ -245,6 +287,7 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
                             customer_id: customerId,
                             traveler_id: String(item.traveler_id || ""),
                             passport_number: item.passport_number || "",
+                            name_as_per_passport: item.name_as_per_passport || "",
                             issue_country_id:
                               item.issue_country_id != null ? String(item.issue_country_id) : "",
                             issue_date: item.issue_date || "",
@@ -328,7 +371,6 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
           <CustomerAutocomplete
-            label="Customer"
             value={form.customer_id}
             required
             onChange={(value) =>
@@ -357,6 +399,12 @@ function ManagePassportDetailsPage({ token, apiRequest, canCreate, canUpdate, ca
             value={form.passport_number}
             required
             onChange={(value) => setForm((current) => ({ ...current, passport_number: value }))}
+          />
+          <TextField
+            label="Name as per passport"
+            value={form.name_as_per_passport}
+            maxLength={250}
+            onChange={(value) => setForm((current) => ({ ...current, name_as_per_passport: value }))}
           />
           <AutocompleteField
             label="Issue Country"

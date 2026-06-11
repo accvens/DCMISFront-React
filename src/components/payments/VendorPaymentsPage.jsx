@@ -103,12 +103,18 @@ function VendorPaymentsPage({ token, apiRequest, paymentStatusOptions }) {
     const isEditing = Boolean(form.id);
 
     try {
+      const vendorIdNum = Number(form.vendor_id);
+      if (!Number.isFinite(vendorIdNum) || vendorIdNum <= 0) {
+        setFormError("Vendor is required.");
+        setSaving(false);
+        return;
+      }
       await apiRequest(form.id ? `/vendor-payments/${form.id}` : "/vendor-payments", {
         method: form.id ? "PATCH" : "POST",
         token,
         body: {
           booking_id: Number(form.booking_id),
-          vendor_id: Number(form.vendor_id),
+          vendor_id: vendorIdNum,
           amount: parseAmountNumeric(form.amount),
           payment_method: form.payment_method.trim(),
           payment_date: form.payment_date || null,

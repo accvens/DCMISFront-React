@@ -14,7 +14,7 @@ import {
   validateNamedSlugForm,
 } from "./AccessShared.jsx";
 
-function ManagePermissionsPage({ token, apiRequest }) {
+function ManagePermissionsPage({ token, apiRequest, canWrite = false }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -61,6 +61,10 @@ function ManagePermissionsPage({ token, apiRequest }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    if (!canWrite) {
+      setFormError("You do not have permission to manage permissions.");
+      return;
+    }
     const validationError = validateNamedSlugForm(
       form.permission_name,
       form.slug,
@@ -100,6 +104,10 @@ function ManagePermissionsPage({ token, apiRequest }) {
   }
 
   async function handleDelete(permissionId) {
+    if (!canWrite) {
+      setError("You do not have permission to delete permissions.");
+      return;
+    }
     try {
       await apiRequest(`/permissions/${permissionId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -121,12 +129,16 @@ function ManagePermissionsPage({ token, apiRequest }) {
       <ManageCard
         title="Manage Permission"
         subtitle="Create or update permission slugs used by the API."
-        actionLabel="Add Permission"
-        onAction={() => {
-          setForm(createEmptyPermissionForm());
-          setFormError("");
-          setModalOpen(true);
-        }}
+        actionLabel={canWrite ? "Add Permission" : undefined}
+        onAction={
+          canWrite
+            ? () => {
+                setForm(createEmptyPermissionForm());
+                setFormError("");
+                setModalOpen(true);
+              }
+            : undefined
+        }
       >
         {loading ? (
           <CardLoader message="Loading permissions..." />
@@ -140,43 +152,49 @@ function ManagePermissionsPage({ token, apiRequest }) {
                 item.slug,
               formatDateTime(item.created_at),
               <div key={`permission-actions-${item.id}`} className="ta-table-actions">
-                <button
-                  type="button"
-                  className="btn btn-icon btn-soft-primary btn-sm"
-                  aria-label="Edit permission"
-                  onClick={() => {
-                    setForm({
-                      id: String(item.id),
-                      permission_name: item.permission_name,
-                      slug: item.slug,
-                    });
-                    setFormError("");
-                    setModalOpen(true);
-                  }}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
-                    <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
-                    <path d="M2 13.5h12" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-icon btn-soft-danger btn-sm"
-                  aria-label="Delete permission"
-                  onClick={() =>
-                    setDeleteTarget({
-                      id: item.id,
-                      label: item.permission_name,
-                    })
-                  }
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
-                    <path d="M3 4h10" />
-                    <path d="M6 4V3h4v1" />
-                    <path d="M5 4v8M11 4v8" />
-                    <rect x="4" y="4" width="8" height="9" rx="1" />
-                  </svg>
-                </button>
+                {canWrite ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-soft-primary btn-sm"
+                      aria-label="Edit permission"
+                      onClick={() => {
+                        setForm({
+                          id: String(item.id),
+                          permission_name: item.permission_name,
+                          slug: item.slug,
+                        });
+                        setFormError("");
+                        setModalOpen(true);
+                      }}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
+                        <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
+                        <path d="M2 13.5h12" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-soft-danger btn-sm"
+                      aria-label="Delete permission"
+                      onClick={() =>
+                        setDeleteTarget({
+                          id: item.id,
+                          label: item.permission_name,
+                        })
+                      }
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
+                        <path d="M3 4h10" />
+                        <path d="M6 4V3h4v1" />
+                        <path d="M5 4v8M11 4v8" />
+                        <rect x="4" y="4" width="8" height="9" rx="1" />
+                      </svg>
+                    </button>
+                  </>
+                ) : (
+                  "-"
+                )}
               </div>,
               ])}
               sortable

@@ -12,6 +12,7 @@ import {
   validateBookingForm,
 } from "./BookingsShared.jsx";
 import { BookingEditorChrome } from "./BookingEditorChrome.jsx";
+import { BookingPostSaveNextModal } from "./BookingPostSaveNextModal.jsx";
 import OrderEntryBookingForm, { BOOKING_WIZARD_LAST_STEP_INDEX } from "./OrderEntryBookingForm.jsx";
 
 function CreateBookingPage({
@@ -37,6 +38,9 @@ function CreateBookingPage({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [wizardStep, setWizardStep] = useState(0);
+  const [showPostVendorSaveModal, setShowPostVendorSaveModal] = useState(false);
+  const [postSaveBookingId, setPostSaveBookingId] = useState(null);
+  const [postSaveSavedAsDraft, setPostSaveSavedAsDraft] = useState(false);
 
   useEffect(() => {
     document.title = "Create Booking | Travel Agency";
@@ -91,10 +95,9 @@ function CreateBookingPage({
     };
   }, [apiRequest, token]);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function performSave(wizardStepFromForm) {
     setFormError("");
-    const fullError = validateBookingForm(form);
+    const fullError = validateBookingForm(form, { travelers: state.travelers });
     let saveIncomplete = false;
     if (fullError) {
       const partialError = validateBookingDraft(form);
@@ -105,6 +108,10 @@ function CreateBookingPage({
       saveIncomplete = true;
     }
     setSubmitting(true);
+    const effectiveStep =
+      typeof wizardStepFromForm === "number" && Number.isFinite(wizardStepFromForm)
+        ? Math.floor(wizardStepFromForm)
+        : wizardStep;
 
     try {
       const created = await apiRequest("/bookings", {
@@ -113,23 +120,50 @@ function CreateBookingPage({
         body: buildBookingPayload(form, saveIncomplete ? { draft: true } : {}),
       });
       const newId = created?.id;
-      if (wizardStep === BOOKING_WIZARD_LAST_STEP_INDEX) {
-        navigate("/bookings/list");
-        return;
-      }
       if (newId == null || Number.isNaN(Number(newId))) {
         setFormError("Booking was created but the server did not return an id. Open it from the bookings list to edit.");
         return;
       }
+      if (effectiveStep === BOOKING_WIZARD_LAST_STEP_INDEX) {
+        setPostSaveBookingId(Number(newId));
+        setPostSaveSavedAsDraft(saveIncomplete);
+        setShowPostVendorSaveModal(true);
+        return;
+      }
       navigate(`/bookings/${newId}/edit`, {
         replace: true,
-        state: { fromCreate: true, wizardStep, savedIncomplete: saveIncomplete },
+        state: { fromCreate: true, wizardStep: effectiveStep, savedIncomplete: saveIncomplete },
       });
     } catch (requestError) {
       setFormError(requestError.message || "Unable to save booking.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handlePostVendorSaveContinueEditing() {
+    const id = postSaveBookingId;
+    const wasDraft = postSaveSavedAsDraft;
+    setShowPostVendorSaveModal(false);
+    setPostSaveBookingId(null);
+    setPostSaveSavedAsDraft(false);
+    if (id != null && Number.isFinite(id)) {
+      navigate(`/bookings/${id}/edit`, {
+        replace: true,
+        state: {
+          fromCreate: true,
+          wizardStep: BOOKING_WIZARD_LAST_STEP_INDEX,
+          savedIncomplete: wasDraft,
+        },
+      });
+    }
+  }
+
+  function handlePostVendorSaveCompleteBooking() {
+    setShowPostVendorSaveModal(false);
+    setPostSaveBookingId(null);
+    setPostSaveSavedAsDraft(false);
+    navigate("/bookings/list");
   }
 
   return (
@@ -139,8 +173,13 @@ function CreateBookingPage({
           <CardLoader message="Preparing booking workspace…" />
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="ta-booking-editor-form">
-          <BookingEditorChrome mode="create">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+          className="ta-booking-editor-form"
+        >
+          <BookingEditorChrome>
             <BookingAlertMessage
               message={state.error}
               variant="danger"
@@ -169,14 +208,20 @@ function CreateBookingPage({
               setProductTypesList={(fn) => setState((s) => ({ ...s, productTypes: fn(s.productTypes) }))}
               paymentModes={state.paymentModes || []}
               submitting={submitting}
-              submitLabel="Save booking"
+              submitLabel="Save"
               savingLabel="Saving…"
               onWizardStepChange={setWizardStep}
+              onSaveBooking={performSave}
               validationError={formError}
             />
           </BookingEditorChrome>
         </form>
       )}
+      <BookingPostSaveNextModal
+        open={showPostVendorSaveModal}
+        onContinueEditing={handlePostVendorSaveContinueEditing}
+        onCompleteBooking={handlePostVendorSaveCompleteBooking}
+      />
     </>
   );
 }

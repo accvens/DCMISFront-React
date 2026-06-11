@@ -9,8 +9,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 5174,
-      strictPort: true,
+      // Keep default Vite dev URL (matches existing bookmarks).
+      port: 5173,
+      // If 5173 is busy, fall back to another port instead of failing.
+      strictPort: false,
       // Listen on all interfaces so http://<LAN-IP>:5174 works.
       host: true,
       // Dev: browser calls /api/v1/... on the Vite host; this forwards to FastAPI (avoids direct :8000 fetch issues).

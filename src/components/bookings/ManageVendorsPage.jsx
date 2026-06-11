@@ -245,6 +245,15 @@ function ManageVendorsPage({ token, apiRequest, canCreate, canUpdate, canDelete 
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add vendors.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update vendors.");
+      return;
+    }
     if (!form.vendor_name.trim()) {
       setFormError("Vendor name is required.");
       return;
@@ -260,7 +269,6 @@ function ManageVendorsPage({ token, apiRequest, canCreate, canUpdate, canDelete 
       credit_limit_days = Math.trunc(n);
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(form.id ? `/masters/vendors/${form.id}` : "/masters/vendors", {
@@ -295,6 +303,10 @@ function ManageVendorsPage({ token, apiRequest, canCreate, canUpdate, canDelete 
   }
 
   async function handleDelete(vendorId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete vendors.");
+      return;
+    }
     try {
       await apiRequest(`/masters/vendors/${vendorId}`, { method: "DELETE", token });
       setDeleteTarget(null);

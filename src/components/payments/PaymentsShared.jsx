@@ -1,32 +1,3 @@
-import { NavLink } from "react-router-dom";
-
-export function PaymentsSubmenu() {
-  const links = [
-    { to: "/payments/customer", label: "Customer Payment" },
-    { to: "/payments/vendor", label: "Vendor Payment" },
-  ];
-
-  return (
-    <div className="card">
-      <div className="card-body py-3">
-        <div className="ta-submenu">
-          {links.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) =>
-                `btn btn-sm ${isActive ? "btn-primary" : "btn-light"}`
-              }
-            >
-              {link.label}
-            </NavLink>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function StatusBadge({ status, ...rest }) {
   let className = "bg-info-subtle text-info";
   const normalized = (status || "Unknown").toLowerCase();

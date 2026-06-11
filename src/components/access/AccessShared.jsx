@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink } from "react-router-dom";
 import { formatAmountInputGrouped, formatAmountPlain, stripAmountGrouping } from "../../formatAmount.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,39 +46,17 @@ export function ListSearchInput({
 }
 
 export function AccessPageHeader({ title, subtitle }) {
+  const sub =
+    subtitle == null || typeof subtitle !== "string"
+      ? subtitle
+      : subtitle.trim() === ""
+        ? null
+        : subtitle.trim();
   return (
     <div className="page-title-box d-flex align-items-center justify-content-between">
       <div>
         <h4 className="mb-1">{title}</h4>
-        <p className="ta-card-muted mb-0">{subtitle}</p>
-      </div>
-    </div>
-  );
-}
-
-export function AccessSubmenu() {
-  const links = [
-    { to: "/access/users", label: "Manage User" },
-    { to: "/access/roles", label: "Manage Role" },
-    { to: "/access/permissions", label: "Manage Permission" },
-  ];
-
-  return (
-    <div className="card">
-      <div className="card-body py-3">
-        <div className="ta-submenu">
-          {links.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) =>
-                `btn btn-sm ${isActive ? "btn-primary" : "btn-light"}`
-              }
-            >
-              {link.label}
-            </NavLink>
-          ))}
-        </div>
+        {sub ? <p className="ta-card-muted mb-0">{sub}</p> : null}
       </div>
     </div>
   );
@@ -453,6 +430,9 @@ export function ConfirmDeleteModal({
   confirmLabel,
   onCancel,
   onConfirm,
+  /** When true, delete action is in flight; disables both footer buttons. */
+  saving = false,
+  savingLabel = "Deleting…",
 }) {
   if (!open) {
     return null;
@@ -465,17 +445,23 @@ export function ConfirmDeleteModal({
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
-              <button type="button" className="btn-close" onClick={onCancel} aria-label="Close"></button>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={onCancel}
+                disabled={saving}
+                aria-label="Close"
+              ></button>
             </div>
             <div className="modal-body">
               <p className="mb-0">{message}</p>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-light" onClick={onCancel}>
+              <button type="button" className="btn btn-light" onClick={onCancel} disabled={saving}>
                 Cancel
               </button>
-              <button type="button" className="btn btn-danger" onClick={onConfirm}>
-                {confirmLabel}
+              <button type="button" className="btn btn-danger" onClick={onConfirm} disabled={saving}>
+                {saving ? savingLabel : confirmLabel}
               </button>
             </div>
           </div>
@@ -606,9 +592,18 @@ export function FormModal({
       <div className="modal fade show ta-modal d-block" tabIndex="-1" role="dialog" aria-modal="true">
         <div className={dialogClassName} role="document">
           <div className="modal-content">
-            <form
-              onSubmit={(event) => {
+            <div
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") {
+                  return;
+                }
+                const tag = String(event.target?.tagName || "").toLowerCase();
+                if (tag === "textarea") {
+                  return;
+                }
+                // Avoid nested-form submission issues: treat Enter as modal save.
                 event.preventDefault();
+                event.stopPropagation();
                 onSubmit(event);
               }}
             >
@@ -621,11 +616,20 @@ export function FormModal({
                 <button type="button" className="btn btn-light" onClick={onCancel}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={saving}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onSubmit(event);
+                  }}
+                >
                   {saving ? "Saving..." : saveLabel}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       </div>
@@ -634,9 +638,17 @@ export function FormModal({
   );
 }
 
-export function SelectField({ label, value, onChange, options, required = false }) {
+export function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  required = false,
+  /** Bootstrap column wrapper (default half-width on md+). */
+  wrapperClassName = "col-12 col-md-6",
+}) {
   return (
-    <div className="col-12 col-md-6">
+    <div className={wrapperClassName}>
       <label className="form-label">{label}</label>
       <select
         className="form-select"
@@ -666,6 +678,7 @@ export function TextField({
   required = false,
   step,
   min,
+  max,
   placeholder,
   maxLength,
   list,
@@ -678,6 +691,8 @@ export function TextField({
   formatAmountOnBlur = false,
   onBlur,
   onFocus,
+  /** Bootstrap column wrapper (default half-width on md+). */
+  wrapperClassName = "col-12 col-md-6",
 }) {
   const [amountFocused, setAmountFocused] = useState(false);
   const inputId = id || (label ? `ta-field-${String(label).replace(/\s+/g, "-").toLowerCase()}` : undefined);
@@ -691,7 +706,7 @@ export function TextField({
   const effectiveInputMode = formatAmountOnBlur ? "decimal" : inputMode;
 
   return (
-    <div className="col-12 col-md-6">
+    <div className={wrapperClassName}>
       <label className="form-label" htmlFor={inputId}>
         {label}
       </label>
@@ -705,6 +720,7 @@ export function TextField({
         title={title}
         step={formatAmountOnBlur ? undefined : step}
         min={formatAmountOnBlur ? undefined : min}
+        max={formatAmountOnBlur ? undefined : max}
         placeholder={placeholder}
         maxLength={maxLength}
         list={list}
@@ -900,27 +916,7 @@ export function getPermissionGroups(permissionOptions) {
     .sort((a, b) => a.groupLabel.localeCompare(b.groupLabel));
 }
 
-/** Format date or datetime for UI display as Y-m-d H:i:s (e.g. 2026-03-17 14:30:45). Date-only values show 00:00:00. */
-export function formatDateTime(value) {
-  if (value == null || value === "") return "-";
-  const s = String(value).trim();
-  if (!s) return "-";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s + " 00:00:00";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "-";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  const sec = String(d.getSeconds()).padStart(2, "0");
-  return `${y}-${m}-${day} ${h}:${min}:${sec}`;
-}
-
-/** Same as formatDateTime: display as Y-m-d H:i:s. */
-export function formatDate(value) {
-  return formatDateTime(value);
-}
+export { formatDate, formatDateTime } from "../../formatDate.js";
 
 export function createEmptyUserForm() {
   return {
@@ -1006,6 +1002,8 @@ export function AutocompleteField({
   options,
   required = false,
   placeholder = "Type to search…",
+  /** Shown when `label` is hidden; keeps combobox identifiable to assistive tech. */
+  ariaLabel,
   onAddNew,
   addNewLabel,
   disabled = false,
@@ -1015,6 +1013,11 @@ export function AutocompleteField({
   /** When set, called with debounced input text so parent can load `options` from the API (no local filtering). */
   onDebouncedInputChange,
   debounceMs = 400,
+  /**
+   * When there is no visible `label`, render an invisible `form-label` row so the input lines up with
+   * neighboring `TextField` / `SelectField` columns in the same Bootstrap row.
+   */
+  reserveLabelSpace = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1105,7 +1108,9 @@ export function AutocompleteField({
     addNewLabel &&
     !options.some((o) => String(o.label).toLowerCase() === query.trim().toLowerCase());
 
-  const rows = showCreate ? [...filtered, { __create: true, q: query.trim() }] : filtered;
+  // Keep the "Create ..." action at the top so it's easy to discover,
+  // especially when the list is long and scrollable.
+  const rows = showCreate ? [{ __create: true, q: query.trim() }, ...filtered] : filtered;
 
   function pickOption(opt) {
     if (opt.__create) {
@@ -1159,7 +1164,16 @@ export function AutocompleteField({
 
   return (
     <div className={wrapperClassName} ref={rootRef}>
-      {label && !hideLabel ? <label className="form-label">{label}</label> : null}
+      {label && !hideLabel ? (
+        <label className="form-label">{label}</label>
+      ) : reserveLabelSpace ? (
+        <label
+          className="form-label text-muted small mb-0 invisible user-select-none"
+          aria-hidden="true"
+        >
+          {"\u00a0"}
+        </label>
+      ) : null}
       <div className="position-relative" ref={anchorRef}>
         <input
           type="text"
@@ -1168,10 +1182,11 @@ export function AutocompleteField({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-label={ariaLabel}
           required={required && !value}
           disabled={disabled}
           placeholder={placeholder}
-          value={open ? query : displayLabel || query}
+          value={open ? query : value ? (displayLabel || "") : query}
           style={{ whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}
           onFocus={() => {
             setOpen(true);
@@ -1187,6 +1202,11 @@ export function AutocompleteField({
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setOpen(false);
+            }
+            /* Inside a <form> (e.g. booking), Enter in a text input would submit the whole form
+               and trigger save/PATCH. Selection is by click, not Enter — block implicit submit. */
+            if (e.key === "Enter") {
+              e.preventDefault();
             }
           }}
         />

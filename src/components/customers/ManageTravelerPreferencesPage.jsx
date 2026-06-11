@@ -52,6 +52,7 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [successModal, setSuccessModal] = useState(null);
+  const [customerFilterId, setCustomerFilterId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
 
@@ -61,7 +62,14 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
 
   useEffect(() => {
     setPage(1);
-  }, [searchInput]);
+  }, [searchInput, customerFilterId]);
+
+  function buildListUrl() {
+    const base = buildPagedSearchUrl("/travel-preferences", page, pageSize, debouncedSearch);
+    const cid = String(customerFilterId || "").trim();
+    if (!cid) return base;
+    return `${base}&customer_id=${encodeURIComponent(cid)}`;
+  }
 
   useEffect(() => {
     let active = true;
@@ -69,9 +77,14 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
     setError("");
 
     Promise.all([
-      apiRequest(buildPagedSearchUrl("/travel-preferences", page, pageSize, debouncedSearch), { token }),
+      apiRequest(buildListUrl(), { token }),
       apiRequest("/customers?page=1&page_size=100", { token }),
-      apiRequest("/travelers?page=1&page_size=100", { token }),
+      apiRequest(
+        String(customerFilterId || "").trim()
+          ? `/travelers?page=1&page_size=100&customer_id=${encodeURIComponent(String(customerFilterId).trim())}`
+          : "/travelers?page=1&page_size=100",
+        { token },
+      ),
     ])
       .then(([prefsResponse, customersResponse, travelersResponse]) => {
         if (!active) return;
@@ -89,7 +102,7 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token, customerFilterId]);
 
   function resolveCustomerLabel(customerId) {
     const c = customers.find((item) => String(item.id) === String(customerId));
@@ -106,13 +119,21 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add traveler preferences.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update traveler preferences.");
+      return;
+    }
     const validationError = validatePreferenceForm(form);
     if (validationError) {
       setFormError(validationError);
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(form.id ? `/travel-preferences/${form.id}` : "/travel-preferences", {
@@ -142,6 +163,10 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
   }
 
   async function handleDelete(preferenceId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete traveler preferences.");
+      return;
+    }
     try {
       await apiRequest(`/travel-preferences/${preferenceId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -159,24 +184,46 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Traveler Preferences"
-        subtitle="Select a customer, then a traveler, and record meal, seat, hotel, and special requests."
+        subtitle=""
         toolbarExtra={
-          <ListSearchInput
-            id="travel-preferences-list-search"
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder="Search customer, traveler, meal, seat, hotel, special request..."
-          />
-        }
-        actionLabel={canCreate ? "Add Preference" : undefined}
-        onAction={
-          canCreate
-            ? () => {
-                setForm(createEmptyPreferenceForm());
-                setFormError("");
-                setModalOpen(true);
-              }
-            : undefined
+          <div className="ta-travelers-toolbar">
+            <CustomerAutocomplete
+              value={customerFilterId}
+              onChange={setCustomerFilterId}
+              customers={customers}
+              apiRequest={apiRequest}
+              token={token}
+              required={false}
+              wrapperClassName="ta-travelers-toolbar__customer"
+              inputClassName="form-control form-control-sm"
+            />
+            <div className="ta-travelers-toolbar__search">
+              <ListSearchInput
+                id="travel-preferences-list-search"
+                value={searchInput}
+                onChange={setSearchInput}
+                placeholder="Search customer, traveler, meal, seat, hotel, special request..."
+              />
+            </div>
+            {String(customerFilterId || "").trim() ? (
+              <button type="button" className="btn btn-sm btn-light" onClick={() => setCustomerFilterId("")}>
+                Clear
+              </button>
+            ) : null}
+            {canCreate ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setForm({ ...createEmptyPreferenceForm(), customer_id: String(customerFilterId || "").trim() });
+                  setFormError("");
+                  setModalOpen(true);
+                }}
+              >
+                Add Preference
+              </button>
+            ) : null}
+          </div>
         }
       >
         {loading ? (
@@ -285,7 +332,6 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
           <CustomerAutocomplete
-            label="Customer"
             value={form.customer_id}
             required
             onChange={(value) =>
@@ -298,9 +344,6 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
             apiRequest={apiRequest}
             token={token}
           />
-          <p className="col-12 small text-muted mb-0">
-            Select a customer first, then the traveler these preferences apply to.
-          </p>
           <TravelerAutocomplete
             label="Traveler"
             value={form.traveler_id}
@@ -311,7 +354,11 @@ function ManageTravelerPreferencesPage({ token, apiRequest, canCreate, canUpdate
             onChange={(value) => setForm((current) => ({ ...current, traveler_id: value }))}
             apiRequest={apiRequest}
             token={token}
+            wrapperClassName="col-12 col-md-6"
           />
+          <p className="col-12 small text-muted mb-0">
+            Select a customer first, then the traveler these preferences apply to.
+          </p>
           <TextField
             label="Meal Preference"
             value={form.meal_preference}

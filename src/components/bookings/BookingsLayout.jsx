@@ -1,33 +1,13 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { AccessPageHeader } from "../access/AccessShared.jsx";
-import { BookingsSubmenu } from "./BookingsSubmenu.jsx";
 
-function BookingsLayout({ items }) {
+function BookingsLayout() {
   const location = useLocation();
 
   if (location.pathname === "/bookings") {
     return <Navigate to="/bookings/list" replace />;
   }
 
-  const hideListChrome =
-    location.pathname === "/bookings/create" ||
-    location.pathname.startsWith("/bookings/edit/") ||
-    /^\/bookings\/[^/]+\/edit\/?$/.test(location.pathname);
-
-  if (hideListChrome) {
-    return <Outlet />;
-  }
-
-  return (
-    <>
-      <AccessPageHeader
-        title="Bookings"
-        subtitle="Manage booking records in separate sections"
-      />
-      <BookingsSubmenu links={items} />
-      <Outlet />
-    </>
-  );
+  return <Outlet />;
 }
 
 export default BookingsLayout;

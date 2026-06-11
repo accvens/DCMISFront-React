@@ -4,6 +4,7 @@ import {
   ConfirmActionModal,
   FormModal,
   formatDate,
+  formatDateTime,
   SelectField,
   TextField,
 } from "../access/AccessShared.jsx";
@@ -26,13 +27,14 @@ import {
 import {
   formatAmountPlain,
   formatCurrency,
+  formatCurrencyAmount,
   formatInrWithRupee,
   parseAmountNumeric,
   stripAmountGrouping,
 } from "../../formatAmount.js";
 
-export { formatDate };
-export { formatCurrency };
+export { formatDate, formatDateTime };
+export { formatCurrency, formatCurrencyAmount };
 export {
   filterCatalogProductsByVendorAssignedTypes,
   mergeVendorRowWithPaymentDetailCache,
@@ -40,10 +42,12 @@ export {
   resolveVendorRow,
   vendorAssignedTypeIds,
 } from "../../assignedProductTypeIds.js";
-export { BookingsSubmenu } from "./BookingsSubmenu.jsx";
 
 /** Shared with booking payment lines and standalone payments UI. */
-export const PAYMENT_STATUS_OPTIONS = ["Pending", "Paid"];
+export const PAYMENT_STATUS_OPTIONS = ["Pending"];
+
+/** Customer Sales PI (payment lines) in booking wizard — add/update modal status. */
+export const SALES_PI_STATUS_OPTIONS = ["Pending", "Paid"];
 
 /**
  * Customer / vendor payment line status for selects: only Pending and Paid are allowed.
@@ -55,14 +59,11 @@ export function normalizePaymentLineStatusForForm(status) {
     return "Pending";
   }
   const lower = s.toLowerCase();
+  if (lower === "pending" || lower === "partial") {
+    return "Pending";
+  }
   if (lower === "paid") {
     return "Paid";
-  }
-  if (lower === "pending") {
-    return "Pending";
-  }
-  if (lower === "partial") {
-    return "Pending";
   }
   return "Pending";
 }
@@ -172,11 +173,20 @@ function isLegacyProformaInvoiceAutonumber(raw) {
   return /^\d{4}-\d{2}-\d{2}\d{2}:\d{2}:\d{2}$/.test(s);
 }
 
-/** First customer payment row’s Sale PI / Rcpt no., or PI-001 when missing (same convention as the grid). */
-function primarySalePiReceiptNoForProforma(form) {
+/**
+ * Customer payment row’s Sale PI / Rcpt no. for proforma (`paymentLineIndex` 0-based), or PI-00{n+1} when missing.
+ */
+function primarySalePiReceiptNoForProforma(form, paymentLineIndex = 0) {
   const lines = Array.isArray(form?.paymentLines) ? form.paymentLines : [];
-  const s0 = String(lines[0]?.sale_pi_receipt_no ?? "").trim();
-  return s0 || formatSalePiReceiptSequential(0);
+  let i = Number(paymentLineIndex);
+  if (!Number.isFinite(i) || i < 0) {
+    i = 0;
+  }
+  if (i >= lines.length) {
+    i = 0;
+  }
+  const s = String(lines[i]?.sale_pi_receipt_no ?? "").trim();
+  return s || formatSalePiReceiptSequential(i);
 }
 
 /** Use Sale PI row 1 for proforma invoice number when blank, legacy autonumber, or old PI-{bookingId} style. */
@@ -199,14 +209,8 @@ function formatProformaLongDateLabel(iso) {
   if (!iso) {
     return "—";
   }
-  const raw = String(iso).trim();
-  const d = new Date(raw.includes("T") ? raw : `${raw}T12:00:00`);
-  if (Number.isNaN(d.getTime())) {
-    return escapeHtmlProforma(formatDate(raw));
-  }
-  return escapeHtmlProforma(
-    d.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" }),
-  );
+  const formatted = formatDate(iso);
+  return escapeHtmlProforma(formatted === "-" ? "—" : formatted);
 }
 
 /** Resolve logo/asset URL for print preview (about:blank needs absolute URLs; paths must use Vite base). */
@@ -290,9 +294,9 @@ function proformaDueDateDisplay(form) {
 
 /**
  * Opens a printable proforma invoice from a booking-shaped form and catalogue state (draft or saved booking).
- * @param {unknown} [_options] Ignored (kept for call-site compatibility).
+ * @param {{ customerPaymentLineIndex?: number }} [options] When set, PI number (and invoice date when valid) match that customer payment row — same as the grid / print row.
  */
-export function openProformaInvoicePrintWindow(form, state, bookingId, _options) {
+export function openProformaInvoicePrintWindow(form, state, bookingId, options = {}) {
   const customers = state?.customers ?? [];
   const products = state?.products ?? [];
 
@@ -303,6 +307,11 @@ export function openProformaInvoicePrintWindow(form, state, bookingId, _options)
   const destinationName = normDestLabel(form.destination) || "—";
   const productById = new Map(products.map((p) => [String(p.product_id), p]));
 
+  const paymentLines = Array.isArray(form?.paymentLines) ? form.paymentLines : [];
+  const payIdx = Number(options?.customerPaymentLineIndex);
+  const rowSpecific =
+    Number.isFinite(payIdx) && payIdx >= 0 && payIdx < paymentLines.length;
+
   const proformaNoRaw = String(form.proforma_invoice_number ?? "").trim();
   const resolvedBookingIdRaw =
     bookingId != null && String(bookingId).trim() !== ""
@@ -311,11 +320,19 @@ export function openProformaInvoicePrintWindow(form, state, bookingId, _options)
         ? String(form.id).trim()
         : "";
   const resolvedBookingId = /^\d+$/.test(resolvedBookingIdRaw) ? resolvedBookingIdRaw : "";
-  const salePiAsInvoiceNo = primarySalePiReceiptNoForProforma(form);
-  const proformaNo = shouldSyncProformaInvoiceNumberToFirstSalePi(proformaNoRaw, resolvedBookingIdRaw)
+  const salePiAsInvoiceNo = primarySalePiReceiptNoForProforma(form, rowSpecific ? payIdx : 0);
+  const proformaNo = rowSpecific
     ? salePiAsInvoiceNo
-    : proformaNoRaw;
-  const proformaDate = String(form.proforma_invoice_date ?? "").trim();
+    : shouldSyncProformaInvoiceNumberToFirstSalePi(proformaNoRaw, resolvedBookingIdRaw)
+      ? salePiAsInvoiceNo
+      : proformaNoRaw;
+  let proformaDate = String(form.proforma_invoice_date ?? "").trim();
+  if (rowSpecific) {
+    const rd = String(paymentLines[payIdx]?.payment_date ?? "").trim();
+    if (BOOKING_ISO_DATE_RE.test(rd) && isValidIsoCalendarDate(rd)) {
+      proformaDate = rd;
+    }
+  }
   const drcNo = String(form.drc_no ?? "").trim();
 
   const configuredLines = (form.productLines || []).filter(
@@ -380,6 +397,7 @@ export function openProformaInvoicePrintWindow(form, state, bookingId, _options)
   const travelStart = form.travel_start_date ? formatDate(form.travel_start_date) : "—";
   const travelEnd = form.travel_end_date ? formatDate(form.travel_end_date) : "—";
 
+  // We use the Sales PI receipt number (PI-###) as the invoice number.
   const invoiceNumber = escapeHtmlProforma(proformaNo);
   const invoiceDateHtml = formatProformaLongDateLabel(proformaDate);
   const dueDateHtml = proformaDueDateDisplay(form);
@@ -394,7 +412,7 @@ export function openProformaInvoicePrintWindow(form, state, bookingId, _options)
   <title>Proforma invoice — ${escapeHtmlProforma(proformaNo)}</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, system-ui, sans-serif; margin: 2rem; color: #1a1a1a; font-size: 14px; line-height: 1.45; }
+    body { font-family: Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; color: #1a1a1a; font-size: 14px; line-height: 1.45; }
     .doc-note { color: #555; font-size: 12px; margin: 0.5rem 0 1.25rem; }
     .logo-wrap { text-align: center; margin-bottom: 1.25rem; }
     .logo-frame { display: flex; align-items: center; justify-content: center; margin: 0 auto; min-height: 56px; max-width: 420px; }
@@ -430,7 +448,7 @@ export function openProformaInvoicePrintWindow(form, state, bookingId, _options)
 
   <table class="meta-table" role="presentation">
     <tbody>
-      <tr><th scope="row">Invoice number</th><td>${invoiceNumber}</td></tr>
+      <tr><th scope="row">PI number</th><td>${invoiceNumber}</td></tr>
       <tr><th scope="row">Invoice date</th><td>${invoiceDateHtml}</td></tr>
       <tr><th scope="row">Due date</th><td>${dueDateHtml}</td></tr>
     </tbody>
@@ -547,6 +565,7 @@ export function openProformaInvoicePrintWindow(form, state, bookingId, _options)
 export function emptyTravelerLine() {
   return {
     traveler_id: "",
+    pax_type: "CO",
     seat_preference: "",
     meal_preference: "",
     special_request: "",
@@ -636,6 +655,8 @@ export function emptyProductLine() {
     net_payable: "",
     due_date: "",
     payment_mode: "",
+    line_status: "Pending",
+    line_remark: "",
   };
 }
 
@@ -874,18 +895,22 @@ export function customerPaymentLinePrimaryAmount(line) {
   return 0;
 }
 
-/** `amount_received` included in booking wizard progress / outstanding when status is Paid (case-insensitive). */
+/**
+ * Sum of **Amount recvd** for a customer payment line (Sales PI), for totals, footer, and wizard progress.
+ * Counts any row with a recorded `amount_received` (status is not used: the API stores customer lines as
+ * "Pending" and no longer persists "Paid" on save, so filtering by status would always show 0).
+ */
 export function customerPaymentLineReceivedForPaidProgress(line) {
-  const st = String(line?.status ?? "").trim().toLowerCase();
-  if (st !== "paid") {
+  const rec = parseBookingAmountNumber(line?.amount_received);
+  if (!Number.isFinite(rec) || rec <= 0) {
     return 0;
   }
-  const rec = parseBookingAmountNumber(line?.amount_received);
-  return Number.isFinite(rec) && rec >= 0 ? rec : 0;
+  return rec;
 }
 
 export function emptyPaymentLine() {
   return {
+    payment_id: "",
     sale_pi_receipt_no: "",
     invoice_amount: "",
     amount_received: "",
@@ -895,6 +920,7 @@ export function emptyPaymentLine() {
     payment_date: "",
     received_on: "",
     status: "Pending",
+    remark: "",
   };
 }
 
@@ -939,7 +965,7 @@ export function emptyVendorPaymentLine() {
     product_type_id: "",
     vendor_id: "",
     product_id: "",
-    amount: "",
+    amount: "0",
     quantity: "1",
     payment_method: "",
     payment_date: "",
@@ -956,19 +982,6 @@ function productTypeDisplayName(productTypes, typeIdRaw) {
   return t ? String(t.product_name || "").trim() : "";
 }
 
-function isPackageProductTypeName(name) {
-  return String(name || "").trim().toLowerCase() === "package";
-}
-
-function packageProductTypeIdString(productTypes) {
-  const pkg = (productTypes || []).find((t) => isPackageProductTypeName(t.product_name));
-  if (!pkg || pkg.id == null) {
-    return "";
-  }
-  const s = String(pkg.id).trim();
-  return s;
-}
-
 function normalizedPositiveOrderTotal(orderTotalDefaultPrice) {
   const raw = String(orderTotalDefaultPrice ?? "").trim();
   if (!raw) {
@@ -982,8 +995,8 @@ function normalizedPositiveOrderTotal(orderTotalDefaultPrice) {
 }
 
 /**
- * First Products row + master name "Package" → price defaults to booking total order value when set;
- * otherwise catalogue / empty string from `catalogueAmountRaw`.
+ * Default unit price for vendor-payment line.
+ * Booking Details "Total order value" should not be tied to any specific product type (e.g. Package).
  */
 function resolveVendorLineDefaultAmount(
   lineIndex,
@@ -992,13 +1005,11 @@ function resolveVendorLineDefaultAmount(
   catalogueAmountRaw,
   orderTotalDefaultPrice,
 ) {
-  const orderStr = normalizedPositiveOrderTotal(orderTotalDefaultPrice);
-  const nm = productTypeDisplayName(productTypes, typeIdRaw);
-  if (lineIndex === 0 && orderStr && isPackageProductTypeName(nm)) {
-    return vendorLineAmountInputValue(orderStr);
-  }
   const c = catalogueAmountRaw;
-  return vendorLineAmountInputValue(c != null && c !== "" ? String(c) : "");
+  if (c != null && c !== "" && String(c).trim() !== "") {
+    return vendorLineAmountInputValue(String(c));
+  }
+  return vendorLineAmountInputValue("0");
 }
 
 /** Stable string for controlled `<select>` / inputs on vendor payment lines (API may send numbers). */
@@ -1080,8 +1091,10 @@ function applyBookingTotalToFirstVendorCatalogRow(vendorPaymentLines, targetTota
 
 /**
  * When the user edits Booking Details `total_amount`, keep **total order value = sum of line prices**:
- * row 0 is the **Package** line (type + catalogue vendor/product) and its unit price becomes
- * `target total − sum(other rows’ prices)` (never negative).
+ * row 0’s unit price becomes `target total − sum(other rows’ prices)` (never negative).
+ * If row 0 already has a **product type** chosen, it is treated as the Package swing line: catalogue vendor/product
+ * is resolved from masters. If the user has **not** chosen a type yet, only **amount** is updated so the Product
+ * dropdown can stay on “Select” until they pick a master product.
  *
  * @param {object} ctx — `products`, `productTypes`, `vendors`, `bookingDestination`, `passengerCount`
  */
@@ -1095,35 +1108,15 @@ function applyBookingTotalToPackageSwingRow(vendorPaymentLines, targetTotal, ctx
   const swing = Math.max(0, T - sumOthers);
   const swingStr = vendorLineAmountInputValue(formatAmountPlain(swing));
 
-  const pkgId = packageProductTypeIdString(ctx?.productTypes || []);
-  if (!pkgId) {
-    return patchLine(raw, 0, { amount: swingStr });
-  }
-
-  const products = ctx?.products || [];
-  const vendors = ctx?.vendors || [];
-  const bookingDestination = ctx?.bookingDestination ?? "";
-  const pc = Number(ctx?.passengerCount) > 0 ? Math.trunc(Number(ctx.passengerCount)) : 0;
-
-  const line0Base = { ...(raw[0] || emptyVendorPaymentLine()), product_type_id: pkgId };
-  const merged = vendorLineFromProductType(
-    products,
-    bookingDestination,
-    pkgId,
-    pc,
-    line0Base,
-    vendors,
-  );
-  return patchLine(raw, 0, {
-    ...merged,
-    amount: swingStr,
-  });
+  // Booking Details total should only adjust the swing amount; do not force or depend on "Package"
+  // (or any product-type selection) for row 0.
+  return patchLine(raw, 0, { amount: swingStr });
 }
 
 /**
  * Bidirectional sync: Products card price sum → Booking Details `total_amount`;
- * when the user edits `total_amount` (see `userEditedTotalRef`), row 0 becomes **Package** with a swing amount so
- * sum(lines) equals the new total. After that patch, one sum→total pass is skipped to avoid flicker.
+ * when the user edits `total_amount` (see `userEditedTotalRef`), row 0 is updated so line prices sum to the new total
+ * (see `applyBookingTotalToPackageSwingRow`). After that patch, one sum→total pass is skipped to avoid flicker.
  *
  * @param {object|null} vendorCatalogCtx — optional; when set, Package row + swing amounts are applied (order entry).
  */
@@ -1178,6 +1171,11 @@ export function useBookingTotalVendorPriceBidirectionalSync(form, setForm, userE
       return;
     }
 
+    const catalogLineTotalSum = sumBookingProductLineTotals(form.productLines);
+    if (Number.isFinite(catalogLineTotalSum) && catalogLineTotalSum > 0) {
+      return;
+    }
+
     if (Number.isFinite(sum) && sum > 0) {
       const next = formatAmountPlain(sum);
       setForm((c) => {
@@ -1188,7 +1186,7 @@ export function useBookingTotalVendorPriceBidirectionalSync(form, setForm, userE
         return { ...c, total_amount: next };
       });
     }
-  }, [sum, totalTrim, totalNum, setForm, userEditedTotalRef, vendorCatalogCtx]);
+  }, [sum, totalTrim, totalNum, setForm, userEditedTotalRef, vendorCatalogCtx, form.productLines]);
 }
 
 /**
@@ -1197,11 +1195,7 @@ export function useBookingTotalVendorPriceBidirectionalSync(form, setForm, userE
  */
 export function travelerPassengerCount(travelerLines) {
   const lines = travelerLines?.length ? travelerLines : [];
-  if (!lines.length) {
-    return 0;
-  }
-  const coWithProfile = lines.slice(1).filter((l) => String(l.traveler_id ?? "").trim()).length;
-  return 1 + coWithProfile;
+  return lines.filter((l) => String(l?.traveler_id ?? "").trim()).length;
 }
 
 /** Sum of `line_total` on booking Product Details rows (catalog / product lines). */
@@ -1209,7 +1203,7 @@ export function sumBookingProductLineTotals(productLines) {
   const lines = productLines?.length ? productLines : [];
   let s = 0;
   for (const line of lines) {
-    const n = Number(String(line.line_total ?? "").trim());
+    const n = parseBookingAmountNumber(line.line_total);
     if (Number.isFinite(n) && n >= 0) {
       s += n;
     }
@@ -1267,39 +1261,294 @@ function validateVendorTaxableAgainstNetOrder(form) {
   const taxableSum = sumProductLinesTaxableTotal(form.productLines);
   const capR = Math.round(cap * 100) / 100;
   const taxR = Math.round(taxableSum * 100) / 100;
-  if (taxR < capR) {
+  // Allow equality; only block when vendor invoice taxable exceeds the net budget.
+  if (taxR <= capR) {
     return "";
   }
   const maxLabel = formatInrWithRupee(capR);
   const currentLabel = formatInrWithRupee(taxR);
-  return `Maximum allowed: ${maxLabel} (total order value minus profit). Current total taxable: ${currentLabel}.`;
+  return `Vendor invoice total cannot be greater than ${maxLabel} (total order value minus profit). Current total taxable: ${currentLabel}.`;
 }
 
 /** Detects {@link validateVendorTaxableAgainstNetOrder} message (for modal + flow). */
 export function isVendorTaxableCapValidationMessage(message) {
   const s = String(message || "").trim();
   return (
-    s.includes("Maximum allowed:") &&
+    (s.includes("Maximum allowed:") || s.includes("Vendor invoice total cannot be greater than")) &&
     s.includes("(total order value minus profit)") &&
     s.includes("Current total taxable:")
   );
 }
 
-/** Keeps `total_amount` equal to the sum of catalogue product line totals when enabled. */
+/** Keeps `total_amount` equal to the sum of catalogue Product Details line totals when enabled and sum &gt; 0. */
 export function useBookingTotalFromProductLinesAndTravelers(form, setForm, enabled = true) {
   useEffect(() => {
     if (!enabled) {
       return;
     }
-    const next = computedBookingTotalFromProductLines(form.productLines);
+    const sum = sumBookingProductLineTotals(form.productLines);
+    if (!Number.isFinite(sum) || sum <= 0) {
+      return;
+    }
+    const next = formatAmountPlain(sum);
     setForm((c) => {
-      const cur = String(c.total_amount ?? "");
-      if (cur === next) {
+      const cur = String(c.total_amount ?? "").trim();
+      if (cur === next || amountStringsEqualNumerically(cur, next)) {
         return c;
       }
       return { ...c, total_amount: next };
     });
   }, [enabled, form.productLines, setForm]);
+}
+
+const BOOKING_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function localTodayIsoDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isValidIsoCalendarDate(iso) {
+  if (!BOOKING_ISO_DATE_RE.test(String(iso || "").trim())) {
+    return false;
+  }
+  const [y, mo, da] = String(iso)
+    .trim()
+    .split("-")
+    .map(Number);
+  const d = new Date(y, mo - 1, da);
+  return d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === da;
+}
+
+/** Whole years at today's local date from `YYYY-MM-DD` dob, or null if missing/invalid. */
+export function travelerAgeYearsFromDob(dobRaw) {
+  const d = String(dobRaw ?? "").trim();
+  if (!BOOKING_ISO_DATE_RE.test(d)) {
+    return null;
+  }
+  const [y, mo, da] = d.split("-").map(Number);
+  const birth = new Date(y, mo - 1, da);
+  if (Number.isNaN(birth.getTime())) {
+    return null;
+  }
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+/**
+ * Stable key for duplicate detection: normalized first + last name + age (requires valid dob).
+ * Returns null when dob is missing/invalid so only {@link coTravelerDuplicateViolation} id-branch applies.
+ */
+export function travelerNameAgeDedupeKey(travelerRecord) {
+  if (!travelerRecord || travelerRecord.id == null) {
+    return null;
+  }
+  const fn = String(travelerRecord.first_name ?? "").trim().toLowerCase();
+  const ln = String(travelerRecord.last_name ?? "").trim().toLowerCase();
+  if (!fn && !ln) {
+    return null;
+  }
+  const dob = travelerRecord.dob ?? travelerRecord.date_of_birth;
+  const age = travelerAgeYearsFromDob(dob);
+  if (age == null) {
+    return null;
+  }
+  return `${fn}|${ln}|${age}`;
+}
+
+function coTravelerDuplicateViolation(travelerLines, travelers) {
+  const lines = travelerLines?.length ? travelerLines : [];
+  const byId = new Map((travelers || []).map((t) => [String(t.id), t]));
+  const seenTid = new Set();
+  const seenKey = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const tid = String(lines[i]?.traveler_id ?? "").trim();
+    if (!tid) {
+      continue;
+    }
+    if (seenTid.has(tid)) {
+      return true;
+    }
+    seenTid.add(tid);
+    const tr = byId.get(tid);
+    const k = travelerNameAgeDedupeKey(tr);
+    if (k != null) {
+      if (seenKey.has(k)) {
+        return true;
+      }
+      seenKey.add(k);
+    }
+  }
+  return false;
+}
+
+/** Full-booking validation: duplicate traveler id or same name + age (with dob) on multiple lines. */
+export function validateBookingCoTravelerDuplicatesMessage(travelerLines, travelers) {
+  if (coTravelerDuplicateViolation(travelerLines, travelers)) {
+    return "Duplicate traveler is not allowed";
+  }
+  return "";
+}
+
+/**
+ * Traveler ids to hide from Co PAX autocomplete: already picked rows + any profile matching name+age
+ * of another picked row (when dob allows a dedupe key).
+ */
+export function bookingTravelerAutocompleteExcludeIds(travelerLines, travelers, rowIndex) {
+  const lines = travelerLines?.length ? travelerLines : [];
+  const byId = new Map((travelers || []).map((t) => [String(t.id), t]));
+
+  const pushExcludesForLines = (skipIndex) => {
+    const otherIds = new Set();
+    const otherKeys = new Set();
+    lines.forEach((line, i) => {
+      if (skipIndex != null && Number.isFinite(Number(skipIndex)) && i === Number(skipIndex)) {
+        return;
+      }
+      const tid = String(line?.traveler_id ?? "").trim();
+      if (!tid) {
+        return;
+      }
+      otherIds.add(tid);
+      const tr = byId.get(tid);
+      const k = travelerNameAgeDedupeKey(tr);
+      if (k != null) {
+        otherKeys.add(k);
+      }
+    });
+    const out = [...otherIds];
+    for (const t of travelers || []) {
+      const id = String(t?.id ?? "").trim();
+      if (!id || otherIds.has(id)) {
+        continue;
+      }
+      const k = travelerNameAgeDedupeKey(t);
+      if (k != null && otherKeys.has(k)) {
+        out.push(id);
+      }
+    }
+    return out;
+  };
+
+  /** New booking line: every traveler already on the list is excluded from search. */
+  if (rowIndex === "new") {
+    return pushExcludesForLines(null);
+  }
+
+  const ridx = Number(rowIndex);
+  if (!Number.isFinite(ridx) || ridx < 0) {
+    return [];
+  }
+  return pushExcludesForLines(ridx);
+}
+
+/** After assigning `newTravelerId` on `rowIndex`, would the booking list contain a duplicate? */
+export function validateTravelerPickDuplicateMessage(travelerLines, travelers, rowIndex, newTravelerId) {
+  const v = String(newTravelerId ?? "").trim();
+  if (!v) {
+    return "";
+  }
+  const base = travelerLines?.length ? [...travelerLines] : [emptyTravelerLine()];
+  const idx = Number(rowIndex);
+  if (!Number.isFinite(idx) || idx < 0) {
+    return "";
+  }
+  const next = [...base];
+  while (next.length <= idx) {
+    next.push(emptyTravelerLine());
+  }
+  const patched = patchLine(next, idx, { traveler_id: newTravelerId });
+  if (coTravelerDuplicateViolation(patched, travelers)) {
+    return "This traveler is already added";
+  }
+  return "";
+}
+
+/** Calendar date (YYYY-MM-DD) from API `created_at` ISO string, or today if missing. */
+function bookingReferenceDateIsoFromForm(form) {
+  const created = String(form.booking_created_at || "").trim();
+  if (!created) {
+    return localTodayIsoDate();
+  }
+  const t = Date.parse(created);
+  if (Number.isNaN(t)) {
+    return localTodayIsoDate();
+  }
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Booking travel start validation: optional; when set, must be a valid ISO calendar date.
+ */
+/** Positive decimal string: integer or one optional fractional part (e.g. 12, 12.5, 0.25). */
+function isPlainNonNegativeDecimalString(s) {
+  return /^\d+(\.\d+)?$/.test(s);
+}
+
+/**
+ * @param {object} form
+ * @param {{ required: boolean }} opts — full booking save requires a value; draft allows empty.
+ */
+export function validateEstimatedMarginPercent(form, opts) {
+  const required = Boolean(opts?.required);
+  const s = String(form.estimated_margin ?? "").trim();
+  if (!s) {
+    return required ? "Please enter estimated margin %" : "";
+  }
+  if (!isPlainNonNegativeDecimalString(s)) {
+    return "Only numeric values are allowed";
+  }
+  const n = Number(s);
+  if (!Number.isFinite(n)) {
+    return "Only numeric values are allowed";
+  }
+  if (n < 0) {
+    return "Estimated margin % cannot be negative";
+  }
+  if (n > 100) {
+    return "Estimated margin % must be between 0 and 100";
+  }
+  return "";
+}
+
+/** Travel start date validation disabled — past dates allowed for historical bookings. */
+export function validateTravelStartDateForBooking(_form) {
+  return "";
+}
+
+/**
+ * Validates a single customer PI / receipt date (modal or grid): required ISO date when a line has amount.
+ * @returns {string} Error message or "" when valid.
+ */
+export function validatePiReceiptDateForBooking(form, paymentDateIso) {
+  const pd = String(paymentDateIso ?? "").trim();
+  if (!pd) {
+    return "PI / Receipt date is required.";
+  }
+  if (!BOOKING_ISO_DATE_RE.test(pd) || !isValidIsoCalendarDate(pd)) {
+    return "PI / Receipt date is required.";
+  }
+  return "";
+}
+
+function validateBookingCustomerPaymentReceiptDates(form) {
+  const lines = form.paymentLines || [];
+  for (const l of lines) {
+    if (!(customerPaymentLinePrimaryAmount(l) > 0)) {
+      continue;
+    }
+    const err = validatePiReceiptDateForBooking(form, l.payment_date);
+    if (err) {
+      return err;
+    }
+  }
+  return "";
 }
 
 export function createEmptyBookingForm() {
@@ -1309,14 +1558,17 @@ export function createEmptyBookingForm() {
     atpl_member: false,
     atpl_assigned_user_id: "",
     drc_no: "",
+    booking_created_at: "",
     travel_start_date: "",
     travel_end_date: "",
     estimated_margin: "",
     total_amount: "",
     status: "Pending",
-    travelerLines: [emptyTravelerLine()],
+    // Booking passengers: exactly one Lead PAX row, plus any Co PAX rows.
+    travelerLines: [{ ...emptyTravelerLine(), pax_type: "LEAD" }],
     productLines: [emptyProductLine()],
-    paymentLines: normalizeCustomerPaymentSalePiReceiptNos([emptyPaymentLine()]),
+    // Do not auto-assign Sale PI/Rcpt numbers client-side; the server generates unique numbers per booking.
+    paymentLines: [emptyPaymentLine()],
     vendorPaymentLines: [emptyVendorPaymentLine()],
     proforma_invoice_number: "",
     proforma_invoice_date: "",
@@ -1331,42 +1583,17 @@ export function createDefaultBookingForm(_data) {
 export function createBookingFormFromBooking(booking, options = {}) {
   const catalogueProducts = options.catalogueProducts ?? [];
   const tSrc = booking.travelers?.length ? booking.travelers : [];
-  const spocHas =
-    String(booking.spoc_seat_preference ?? "").trim() ||
-    String(booking.spoc_meal_preference ?? "").trim() ||
-    String(booking.spoc_special_request ?? "").trim();
-
-  const leadLine = {
-    traveler_id: "",
-    seat_preference: String(booking.spoc_seat_preference ?? ""),
-    meal_preference: String(booking.spoc_meal_preference ?? ""),
-    special_request: String(booking.spoc_special_request ?? ""),
-  };
-
-  let travelerLines;
-  if (!spocHas && tSrc.length === 1) {
-    // Legacy / modal: one booking_traveler row only — keep a single form line.
-    travelerLines = [
-      {
-        traveler_id: String(tSrc[0].traveler_id),
-        seat_preference: tSrc[0].seat_preference || "",
-        meal_preference: tSrc[0].meal_preference || "",
-        special_request: tSrc[0].special_request || "",
-      },
-    ];
-  } else if (!tSrc.length) {
-    travelerLines = [leadLine];
-  } else {
-    travelerLines = [
-      leadLine,
-      ...tSrc.map((t) => ({
+  const baseLines = tSrc.length
+    ? tSrc.map((t, idx) => ({
         traveler_id: String(t.traveler_id),
+        pax_type: idx === 0 ? "LEAD" : "CO",
         seat_preference: t.seat_preference || "",
         meal_preference: t.meal_preference || "",
         special_request: t.special_request || "",
-      })),
-    ];
-  }
+      }))
+    : [{ ...emptyTravelerLine(), pax_type: "LEAD" }];
+
+  const travelerLines = baseLines.length ? baseLines : [{ ...emptyTravelerLine(), pax_type: "LEAD" }];
 
   const pSrc = booking.products?.length ? booking.products : [];
   const fromProducts = pSrc.length
@@ -1392,6 +1619,10 @@ export function createBookingFormFromBooking(booking, options = {}) {
             net_payable: p.net_payable != null ? String(p.net_payable) : "",
             due_date: p.due_date || "",
             payment_mode: p.payment_mode != null ? String(p.payment_mode) : "",
+            line_status: normalizePaymentLineStatusForForm(
+              p.vendor_line_status ?? p.vendorLineStatus ?? p.line_status,
+            ),
+            line_remark: p.vendor_line_remark != null ? String(p.vendor_line_remark) : "",
           }),
           null,
         ),
@@ -1409,9 +1640,16 @@ export function createBookingFormFromBooking(booking, options = {}) {
         const ia =
           pay.invoice_amount != null && String(pay.invoice_amount).trim() !== ""
             ? String(pay.invoice_amount)
+            : pay.amount != null && String(pay.amount).trim() !== ""
+              ? String(pay.amount)
+              : "";
+        const pi =
+          pay.sale_pi_receipt_no != null && String(pay.sale_pi_receipt_no).trim() !== ""
+            ? String(pay.sale_pi_receipt_no).trim()
             : "";
         return {
-          sale_pi_receipt_no: "",
+          payment_id: pay.id != null && String(pay.id).trim() !== "" ? String(pay.id) : "",
+          sale_pi_receipt_no: pi,
           invoice_amount: ia,
           amount_received: ar,
           amount: "",
@@ -1420,10 +1658,12 @@ export function createBookingFormFromBooking(booking, options = {}) {
           payment_date: pay.payment_date || "",
           received_on: pay.received_on || "",
           status: normalizePaymentLineStatusForForm(pay.status),
+          remark: pay.remark != null ? String(pay.remark) : "",
         };
       })
     : [emptyPaymentLine()];
-  const paymentLines = normalizeCustomerPaymentSalePiReceiptNos(paymentLinesRaw);
+  // Keep server-provided Sale PI/Rcpt numbers; do not overwrite by row order.
+  const paymentLines = paymentLinesRaw;
 
   const vpaySrc = booking.vendor_payments?.length ? booking.vendor_payments : [];
   const vpIsWizardLine = (vp) => Boolean(vp.booking_vendor_line ?? vp.bookingVendorLine);
@@ -1464,6 +1704,8 @@ export function createBookingFormFromBooking(booking, options = {}) {
         net_payable: "",
         due_date: vp.due_date || "",
         payment_mode: vp.payment_method != null ? String(vp.payment_method) : "",
+        line_status: normalizePaymentLineStatusForForm(vp.status),
+        line_remark: vp.remark != null ? String(vp.remark) : "",
       }),
       null,
     );
@@ -1519,6 +1761,7 @@ export function createBookingFormFromBooking(booking, options = {}) {
         ? String(booking.atpl_assigned_user_id)
         : "",
     drc_no: booking.drc_no || "",
+    booking_created_at: booking.created_at != null ? String(booking.created_at) : "",
     travel_start_date: booking.travel_start_date || "",
     travel_end_date: booking.travel_end_date || "",
     estimated_margin:
@@ -1551,72 +1794,41 @@ export function createBookingFormFromBooking(booking, options = {}) {
  */
 export function buildBookingPayload(form, options = {}) {
   const draft = Boolean(options.draft);
-  const lines = form.travelerLines?.length ? form.travelerLines : [emptyTravelerLine()];
-  const lead0 = lines[0] || emptyTravelerLine();
-  const coSlice = lines.slice(1);
-  const coWithId = coSlice.filter((l) => String(l.traveler_id ?? "").trim());
-  const leadTravelerId = String(lead0.traveler_id ?? "").trim();
+  const rawLines = form.travelerLines?.length ? form.travelerLines : [{ ...emptyTravelerLine(), pax_type: "LEAD" }];
+  const withType = rawLines.map((l, idx) => ({
+    ...emptyTravelerLine(),
+    ...l,
+    pax_type: String(l?.pax_type || "").trim() ? l.pax_type : idx === 0 ? "LEAD" : "CO",
+  }));
 
-  let travelers;
-  let spoc_seat_preference;
-  let spoc_meal_preference;
-  let spoc_special_request;
+  const leadLines = withType.filter((l) => String(l.pax_type).toUpperCase() === "LEAD");
+  const leadPick = leadLines.length ? leadLines[0] : withType[0];
+  const others = withType.filter((l) => l !== leadPick);
+  const ordered = [leadPick, ...others];
 
-  if (coWithId.length) {
-    const coMapped = coWithId.map((l) => ({
+  const travelers = ordered
+    .filter((l) => String(l.traveler_id ?? "").trim())
+    .map((l) => ({
       traveler_id: Number(l.traveler_id),
       seat_preference: l.seat_preference || null,
       meal_preference: l.meal_preference || null,
       special_request: l.special_request || null,
     }));
-    if (leadTravelerId) {
-      // Legacy line 0 still had a traveler profile; keep it as the first booking_traveler row.
-      travelers = [
-        {
-          traveler_id: Number(lead0.traveler_id),
-          seat_preference: lead0.seat_preference || null,
-          meal_preference: lead0.meal_preference || null,
-          special_request: lead0.special_request || null,
-        },
-        ...coMapped,
-      ];
-      spoc_seat_preference = null;
-      spoc_meal_preference = null;
-      spoc_special_request = null;
-    } else {
-      travelers = coMapped;
-      spoc_seat_preference = strOrNull(lead0.seat_preference);
-      spoc_meal_preference = strOrNull(lead0.meal_preference);
-      spoc_special_request = strOrNull(lead0.special_request);
-    }
-  } else if (leadTravelerId) {
-    // Single-row forms (e.g. booking modal): preferences stay on the booking_traveler row.
-    travelers = [
-      {
-        traveler_id: Number(lead0.traveler_id),
-        seat_preference: lead0.seat_preference || null,
-        meal_preference: lead0.meal_preference || null,
-        special_request: lead0.special_request || null,
-      },
-    ];
-    spoc_seat_preference = null;
-    spoc_meal_preference = null;
-    spoc_special_request = null;
-  } else {
-    travelers = [];
-    spoc_seat_preference = strOrNull(lead0.seat_preference);
-    spoc_meal_preference = strOrNull(lead0.meal_preference);
-    spoc_special_request = strOrNull(lead0.special_request);
-  }
+
+  // Keep legacy SPOC columns empty (lead pax is a traveler row now).
+  const spoc_seat_preference = null;
+  const spoc_meal_preference = null;
+  const spoc_special_request = null;
 
   const products = (form.productLines || [])
     .filter((l) => l.vendor_id && String(l.product_id || "").trim())
     .map((l) => {
       const hasPid = String(l.product_id || "").trim();
+      const vid = Number(String(l.vendor_id ?? "").trim());
       const base = {
       product_id: hasPid ? Number(l.product_id) : null,
       product_type_id: null,
-      vendor_id: Number(l.vendor_id),
+      vendor_id: Number.isFinite(vid) && vid > 0 ? Math.trunc(vid) : null,
       quantity: Number(l.quantity),
       price: parseBookingAmountNumber(l.price),
       total_amount: parseBookingAmountNumber(l.line_total),
@@ -1635,22 +1847,31 @@ export function buildBookingPayload(form, options = {}) {
       minimum_due: null,
       due_date: strOrNull(l.due_date) || null,
       payment_mode: strOrNull(l.payment_mode),
+      vendor_line_status: normalizePaymentLineStatusForForm(l.line_status),
+      vendor_line_remark: strOrNull(l.line_remark),
     };
       return base;
     });
 
   const productLinesAsVendorPayments = (form.productLines || [])
     .filter(
-      (l) =>
-        l.vendor_id &&
-        !String(l.product_id || "").trim() &&
-        String(l.booking_product_type_id || "").trim(),
+      (l) => {
+        const vid = Number(String(l.vendor_id ?? "").trim());
+        if (!Number.isFinite(vid) || vid <= 0) {
+          return false;
+        }
+        if (String(l.product_id || "").trim()) {
+          return false;
+        }
+        return Boolean(String(l.booking_product_type_id || "").trim());
+      },
     )
     .map((l) => {
       const qRaw = Number(String(l.quantity ?? "1").trim());
       const quantity = Number.isFinite(qRaw) && qRaw >= 1 ? Math.floor(qRaw) : 1;
+      const vid = Math.trunc(Number(String(l.vendor_id ?? "").trim()));
       return {
-        vendor_id: Number(l.vendor_id),
+        vendor_id: vid,
         product_id: null,
         product_type_id: Number(l.booking_product_type_id),
         booking_vendor_line: true,
@@ -1659,7 +1880,8 @@ export function buildBookingPayload(form, options = {}) {
         quantity,
         payment_method: strOrNull(l.payment_mode)?.trim() || "Unspecified",
         payment_date: null,
-        status: "Pending",
+        status: normalizePaymentLineStatusForForm(l.line_status),
+        remark: strOrNull(l.line_remark),
         invoice_ref_no: truncStr(l.invoice_ref_numbers, 150),
         invoice_ref_date: strOrNull(l.invoice_ref_date) || null,
         gross_amount: decOrNull(l.gross_amount),
@@ -1679,7 +1901,7 @@ export function buildBookingPayload(form, options = {}) {
     .map((l, idx) => ({ line: l, idx }))
     .filter(({ line: l }) => customerPaymentLinePrimaryAmount(l) > 0)
     .map(({ line: l, idx }) => {
-      const pi = String(l.sale_pi_receipt_no ?? "").trim() || formatSalePiReceiptSequential(idx);
+      const pi = String(l.sale_pi_receipt_no ?? "").trim();
       return {
         amount: customerPaymentLinePrimaryAmount(l),
         invoice_amount: decOrNull(l.invoice_amount),
@@ -1689,25 +1911,33 @@ export function buildBookingPayload(form, options = {}) {
         payment_date: l.payment_date || null,
         received_on: strOrNull(l.received_on) || null,
         status: l.status || "Pending",
-        sale_pi_receipt_no: pi,
+        remark: strOrNull(l.remark),
+        // Let the server assign a unique Sale PI/Rcpt no. per booking if user didn't enter one.
+        sale_pi_receipt_no: pi || null,
       };
     });
 
   const vendor_paymentsFromProductCard = (form.vendorPaymentLines || [])
     .filter((l) => {
-      if (!l.vendor_id) {
+      const vid = Number(String(l.vendor_id ?? "").trim());
+      if (!Number.isFinite(vid) || vid <= 0) {
         return false;
       }
-      const lineAmt = vendorProductDetailLineTotal(l);
-      return lineAmt > 0;
+      const hasPid = String(l.product_id || "").trim();
+      const hasTid = String(l.product_type_id || "").trim();
+      if (!hasPid && !hasTid) {
+        return false;
+      }
+      return true;
     })
     .map((l) => {
       const qRaw = Number(String(l.quantity ?? "1").trim());
       const quantity = Number.isFinite(qRaw) && qRaw >= 1 ? Math.floor(qRaw) : 1;
       const hasPid = String(l.product_id || "").trim();
       const hasTid = String(l.product_type_id || "").trim();
+      const vid = Math.trunc(Number(String(l.vendor_id ?? "").trim()));
       return {
-        vendor_id: Number(l.vendor_id),
+        vendor_id: vid,
         product_id: hasPid ? Number(l.product_id) : null,
         product_type_id: hasTid ? Number(l.product_type_id) : null,
         booking_vendor_line: false,
@@ -1763,9 +1993,9 @@ export function buildBookingPayload(form, options = {}) {
     destination,
     atpl_member,
     atpl_assigned_user_id,
-    drc_no: form.drc_no || null,
-    travel_start_date: form.travel_start_date || null,
-    travel_end_date: form.travel_end_date || null,
+    drc_no: String(form.drc_no ?? "").trim() || null,
+    travel_start_date: String(form.travel_start_date ?? "").trim() || null,
+    travel_end_date: String(form.travel_end_date ?? "").trim() || null,
     estimated_margin: form.estimated_margin ? Number(form.estimated_margin) : null,
     total_amount,
     status,
@@ -1791,12 +2021,14 @@ export function validateBookingDraft(form) {
     return "Select a valid customer to save this booking.";
   }
 
-  if (form.travel_start_date && form.travel_end_date && form.travel_end_date < form.travel_start_date) {
-    return "Travel end date cannot be earlier than travel start date.";
+  const travelStartErr = validateTravelStartDateForBooking(form);
+  if (travelStartErr) {
+    return travelStartErr;
   }
 
-  if (form.estimated_margin && Number(form.estimated_margin) < 0) {
-    return "Estimated margin cannot be negative.";
+  const marginDraftErr = validateEstimatedMarginPercent(form, { required: false });
+  if (marginDraftErr) {
+    return marginDraftErr;
   }
 
   const vendorTaxableErr = validateVendorTaxableAgainstNetOrder(form);
@@ -1807,13 +2039,56 @@ export function validateBookingDraft(form) {
   return "";
 }
 
-export function validateBookingForm(form) {
+/**
+ * @param {object} form
+ * @param {{ travelers?: object[] }} [context] Pass `travelers` from booking editor state for name+age duplicate checks.
+ */
+export function validateBookingForm(form, context = {}) {
   if (!form.customer_id) {
     return "Customer is required.";
   }
 
+  const travelerLinesRaw = form.travelerLines?.length ? form.travelerLines : [];
+  if (!travelerLinesRaw.length) {
+    return "Please add at least one traveler";
+  }
+  const lines = travelerLinesRaw.map((l, idx) => ({
+    ...emptyTravelerLine(),
+    ...l,
+    pax_type: String(l?.pax_type || "").trim() ? l.pax_type : idx === 0 ? "LEAD" : "CO",
+  }));
+  const leadLines = lines.filter((l) => String(l?.pax_type || "").toUpperCase() === "LEAD");
+  if (leadLines.length !== 1) {
+    return "Booking must have exactly one Lead PAX.";
+  }
+  if (!String(leadLines[0]?.traveler_id ?? "").trim()) {
+    return "Lead PAX traveler is required.";
+  }
+  const incompleteAny = lines.some((l) => !String(l?.traveler_id ?? "").trim());
+  if (incompleteAny) {
+    return "Traveler details are required";
+  }
+
+  const dupTravelerMsg = validateBookingCoTravelerDuplicatesMessage(
+    form.travelerLines,
+    context.travelers ?? [],
+  );
+  if (dupTravelerMsg) {
+    return dupTravelerMsg;
+  }
+
   if (!normDestLabel(form.destination)) {
     return "Destination is required.";
+  }
+
+  const travelStartErr = validateTravelStartDateForBooking(form);
+  if (travelStartErr) {
+    return travelStartErr;
+  }
+
+  const marginErr = validateEstimatedMarginPercent(form, { required: true });
+  if (marginErr) {
+    return marginErr;
   }
 
   const products = form.productLines || [];
@@ -1840,14 +2115,6 @@ export function validateBookingForm(form) {
     return "Total order value must be greater than 0.";
   }
 
-  if (form.travel_start_date && form.travel_end_date && form.travel_end_date < form.travel_start_date) {
-    return "Travel end date cannot be earlier than travel start date.";
-  }
-
-  if (form.estimated_margin && Number(form.estimated_margin) < 0) {
-    return "Estimated margin cannot be negative.";
-  }
-
   const vendorTaxableErr = validateVendorTaxableAgainstNetOrder(form);
   if (vendorTaxableErr) {
     return vendorTaxableErr;
@@ -1869,6 +2136,18 @@ export function validateBookingForm(form) {
     }
   }
 
+  for (const line of form.vendorPaymentLines || []) {
+    const vid = String(line.vendor_id || "").trim();
+    const hasPid = String(line.product_id || "").trim();
+    const hasTid = String(line.product_type_id || "").trim();
+    if (!vid || (!hasPid && !hasTid)) {
+      continue;
+    }
+    if (vendorProductDetailLineTotal(line) <= 0) {
+      return "Products: each line needs a unit price so the line total is greater than 0.";
+    }
+  }
+
   const passengerCount = travelerPassengerCount(form.travelerLines);
   for (const line of form.vendorPaymentLines || []) {
     if (vendorProductDetailLineTotal(line) <= 0) {
@@ -1880,6 +2159,11 @@ export function validateBookingForm(form) {
         passengerCount === 1 ? "" : "s"
       }). Current line has quantity ${qty}.`;
     }
+  }
+
+  const payPiErr = validateBookingCustomerPaymentReceiptDates(form);
+  if (payPiErr) {
+    return payPiErr;
   }
 
   return "";
@@ -1894,9 +2178,22 @@ export function wizardStepForBookingValidationError(message) {
     return null;
   }
   if (
+    m === "Please add at least one traveler" ||
+    m === "Traveler details are required" ||
+    m === "Duplicate traveler is not allowed" ||
+    m === "This traveler is already added"
+  ) {
+    return 2;
+  }
+  if (
     m.includes("Select a customer") ||
     m.includes("Select a valid customer") ||
-    m === "Customer is required."
+    m === "Customer is required." ||
+    m === "Invalid travel start date" ||
+    m === "Please enter estimated margin %" ||
+    m === "Only numeric values are allowed" ||
+    m === "Estimated margin % cannot be negative" ||
+    m === "Estimated margin % must be between 0 and 100"
   ) {
     return 0;
   }
@@ -1911,6 +2208,9 @@ export function wizardStepForBookingValidationError(message) {
     return 4;
   }
   if (m.startsWith("Product lines:") || m.includes("product line detail")) {
+    return 4;
+  }
+  if (m === "PI / Receipt date is required.") {
     return 4;
   }
   if (/traveler/i.test(m)) {
@@ -2002,8 +2302,8 @@ export function vendorIdsEligibleForDestination(products, vendors, destinationLa
 export function productsForVendorPaymentLine(products, destinationLabel, vendorId, assignedTypeIds) {
   const all = Array.isArray(products) ? products.filter(Boolean) : [];
   const destPool = productsForBookingDestination(products, destinationLabel);
-  const poolNoVendor =
-    destPool.length > 0 ? destPool : [...all];
+  const d = normDestLabel(destinationLabel);
+  const poolNoVendor = destPool.length > 0 ? destPool : d ? [] : [...all];
 
   const vid = Number(vendorId);
   if (!Number.isFinite(vid) || vid <= 0) {
@@ -2052,21 +2352,11 @@ export function productsForVendorPaymentLine(products, destinationLabel, vendorI
     }
   }
 
-  const d = normDestLabel(destinationLabel);
-  function preferDestination(rows) {
-    if (!d || !rows.length) {
-      return rows;
-    }
-    const destPreferred = rows.filter((p) => destLabelsMatch(p.destination, destinationLabel));
-    return destPreferred.length > 0 ? destPreferred : rows;
-  }
-
-  let narrowed = preferDestination(forVendor);
-  if (narrowed.length === 0 && d) {
-    narrowed = preferDestination(all.filter((p) => destLabelsMatch(p.destination, destinationLabel)));
-  }
-  if (narrowed.length === 0) {
-    narrowed = [...all];
+  // In vendor payments, sending a product_id that does not match booking destination is rejected by the API.
+  // When a booking destination is set, only surface matching catalogue rows (even if empty).
+  let narrowed = forVendor;
+  if (d) {
+    narrowed = narrowed.filter((p) => destLabelsMatch(p.destination, destinationLabel));
   }
 
   return narrowed.sort((a, b) =>
@@ -2102,6 +2392,14 @@ export function defaultVendorIdForProductType(vendors, typeIdRaw) {
       return id != null && String(id).trim() !== "" ? String(id).trim() : "";
     }
   }
+  // Fallback: when vendor type assignments are not configured yet (or none match),
+  // but there is only one vendor master record, default to that vendor so the line
+  // is not dropped on save due to missing `vendor_id`.
+  const list = Array.isArray(vendors) ? vendors : [];
+  if (list.length === 1) {
+    const id = list[0]?.id ?? list[0]?.vendor_id;
+    return id != null && String(id).trim() !== "" ? String(id).trim() : "";
+  }
   return "";
 }
 
@@ -2126,13 +2424,18 @@ export function vendorLineFromProductType(
       product_type_id: "",
       product_id: "",
       vendor_id: "",
-      amount: "",
+      amount: vendorLineAmountInputValue("0"),
       quantity: qty,
     };
   }
-  const candidates = productsForBookingDestination(products, destinationLabel)
-    .filter((p) => vendorLineProductTypeValue(p.product_type_id) === tid)
-    .sort((a, b) => String(a.product_name || "").localeCompare(String(b.product_name || "")));
+  const byType = (p) => vendorLineProductTypeValue(p.product_type_id) === tid;
+  const destPool = productsForBookingDestination(products, destinationLabel).filter(byType);
+  const d = normDestLabel(destinationLabel);
+  // If a destination is set but there is no matching catalogue row for this type+destination,
+  // do NOT auto-pick a product from another destination (API will reject it). Leave product_id empty.
+  const candidates = (destPool.length > 0 ? destPool : d ? [] : (products || []).filter(byType)).sort((a, b) =>
+    String(a.product_name || "").localeCompare(String(b.product_name || "")),
+  );
 
   const existingPid = String(existingLine.product_id || "").trim();
   let prod = null;
@@ -2149,18 +2452,18 @@ export function vendorLineFromProductType(
       product_type_id: tid,
       product_id: "",
       vendor_id: defVid,
-      amount: "",
+      amount: vendorLineAmountInputValue("0"),
       quantity: qty,
     };
   }
+  const priceStr =
+    prod.price != null && prod.price !== "" ? String(prod.price) : "0";
   return {
     ...existingLine,
     product_type_id: tid,
     product_id: String(prod.product_id),
     vendor_id: String(prod.vendor_id),
-    amount: vendorLineAmountInputValue(
-      prod.price != null && prod.price !== "" ? String(prod.price) : "",
-    ),
+    amount: vendorLineAmountInputValue(priceStr),
     quantity: qty,
   };
 }
@@ -2190,7 +2493,7 @@ export function VendorBookingProductsSection({
   /** Booking Details total order value — used as default price for row 0 when product type is "Package". */
   orderTotalDefaultPrice = "",
 }) {
-  const [addProductLineModalOpen, setAddProductLineModalOpen] = useState(false);
+  const [inlineProductError, setInlineProductError] = useState("");
   const [singleProductPriceModalOpen, setSingleProductPriceModalOpen] = useState(false);
   const [priceModalRevert, setPriceModalRevert] = useState(null);
 
@@ -2199,8 +2502,6 @@ export function VendorBookingProductsSection({
     [vendorPaymentLines],
   );
 
-  const vendorLinesRef = useRef(vendorPaymentLines);
-  vendorLinesRef.current = vendorPaymentLines;
   const priceBaselineRef = useRef({});
 
   useEffect(() => {
@@ -2221,11 +2522,6 @@ export function VendorBookingProductsSection({
   const destinationSet = Boolean(normDestLabel(bookingDestination));
   const hasCatalogueProducts = productsForDest.length > 0;
 
-  const typeMasterById = useMemo(
-    () => new Map((productTypes || []).map((t) => [Number(t.id), t])),
-    [productTypes],
-  );
-
   /** All master product types (not limited by destination catalogue). */
   const productTypesSorted = useMemo(
     () =>
@@ -2243,34 +2539,123 @@ export function VendorBookingProductsSection({
     );
   }
 
+  function addVendorProductRow() {
+    setInlineProductError("");
+    setForm((c) => {
+      const raw = c.vendorPaymentLines?.length ? [...c.vendorPaymentLines] : [emptyVendorPaymentLine()];
+      return { ...c, vendorPaymentLines: [...raw, emptyVendorPaymentLine()] };
+    });
+  }
+
+  function removeVendorProductRow(idx) {
+    setInlineProductError("");
+    setForm((c) => {
+      const raw = c.vendorPaymentLines?.length ? [...c.vendorPaymentLines] : [emptyVendorPaymentLine()];
+      if (raw.length <= 1) {
+        return { ...c, vendorPaymentLines: [emptyVendorPaymentLine()] };
+      }
+      const next = raw.filter((_, i) => i !== idx);
+      return { ...c, vendorPaymentLines: next.length ? next : [emptyVendorPaymentLine()] };
+    });
+  }
+
+  function handleVendorLineProductSelect(idx, typeIdValue) {
+    setInlineProductError("");
+    const tid = vendorLineProductTypeValue(typeIdValue);
+    const raw = vendorPaymentLines?.length ? [...vendorPaymentLines] : [emptyVendorPaymentLine()];
+    const cur = raw[idx] || emptyVendorPaymentLine();
+    if (!String(tid || "").trim()) {
+      setForm((c) => ({
+        ...c,
+        vendorPaymentLines: patchLine(
+          c.vendorPaymentLines?.length ? c.vendorPaymentLines : [emptyVendorPaymentLine()],
+          idx,
+          {
+            product_type_id: "",
+            product_id: "",
+            vendor_id: "",
+            amount: vendorLineAmountInputValue("0"),
+          },
+        ),
+      }));
+      return;
+    }
+    const resolved = vendorLineFromProductType(
+      products,
+      bookingDestination,
+      tid,
+      passengerCount,
+      cur,
+      vendors,
+    );
+    const finalVendorId = String(resolved?.vendor_id ?? "").trim();
+    if (!finalVendorId) {
+      setInlineProductError("Product is not configured. Please update Masters and retry.");
+      return;
+    }
+    const prevTid = vendorLineProductTypeValue(cur.product_type_id);
+    const priceFromCurrent = String(cur.amount ?? "").trim();
+    const nextAmount =
+      prevTid === tid && priceFromCurrent !== ""
+        ? vendorLineAmountInputValue(cur.amount)
+        : resolveVendorLineDefaultAmount(
+            idx,
+            tid,
+            productTypes,
+            resolved.amount,
+            orderTotalDefaultPrice,
+          );
+    setForm((c) => {
+      const base = c.vendorPaymentLines?.length ? [...c.vendorPaymentLines] : [emptyVendorPaymentLine()];
+      return {
+        ...c,
+        vendorPaymentLines: patchLine(base, idx, {
+          product_type_id: vendorLineProductTypeValue(resolved.product_type_id),
+          product_id: String(resolved.product_id ?? "").trim(),
+          vendor_id: finalVendorId,
+          amount: nextAmount,
+          quantity: String(resolved.quantity ?? "1").trim() || "1",
+        }),
+      };
+    });
+  }
+
+  function handleVendorLineAmountChange(idx, plain) {
+    setInlineProductError("");
+    setForm((c) => ({
+      ...c,
+      vendorPaymentLines: patchLine(
+        c.vendorPaymentLines?.length ? c.vendorPaymentLines : [emptyVendorPaymentLine()],
+        idx,
+        { amount: vendorLineAmountInputValue(plain) },
+      ),
+    }));
+  }
+
   const grandVendorPaymentTotal = useMemo(
     () => sumVendorProductDetailPriceInputs(vendorPaymentLines),
     [vendorPaymentLines],
   );
-  const grandTotalLabel =
-    grandVendorPaymentTotal > 0 ? formatCurrency(grandVendorPaymentTotal) : "—";
-
-  const row0PackageDefaultDoneRef = useRef(false);
+  const orderTotalStr = normalizedPositiveOrderTotal(orderTotalDefaultPrice);
+  const orderTotalNum = orderTotalStr ? Number(normalizeBookingAmountInput(orderTotalStr)) : 0;
+  const displayGrandTotalNum =
+    grandVendorPaymentTotal > 0 ? grandVendorPaymentTotal : orderTotalNum > 0 ? orderTotalNum : 0;
+  const grandTotalLabel = displayGrandTotalNum > 0 ? formatCurrencyAmount(displayGrandTotalNum) : "—";
 
   useEffect(() => {
-    setForm((c) => {
-      const raw = c.vendorPaymentLines?.length ? c.vendorPaymentLines : [emptyVendorPaymentLine()];
-      let lines = raw;
-
-      if (!row0PackageDefaultDoneRef.current) {
-        const line0 = raw[0];
-        if (vendorLineProductTypeValue(line0?.product_type_id)) {
-          row0PackageDefaultDoneRef.current = true;
-        } else if ((productTypes || []).length > 0) {
-          const pkgId = packageProductTypeIdString(productTypes);
-          if (pkgId) {
-            lines = patchLine(lines, 0, { product_type_id: pkgId });
-          }
-          row0PackageDefaultDoneRef.current = true;
-        }
+    // Defer the form sync to avoid triggering parent updates during concurrent renders
+    // (React warns: "Cannot update a component while rendering a different component").
+    let cancelled = false;
+    const defer = typeof queueMicrotask === "function" ? queueMicrotask : (fn) => setTimeout(fn, 0);
+    defer(() => {
+      if (cancelled) {
+        return;
       }
+      setForm((c) => {
+      const raw = c.vendorPaymentLines?.length ? c.vendorPaymentLines : [emptyVendorPaymentLine()];
+      const lines = raw;
 
-      let touched = lines !== raw;
+      let touched = false;
       const next = lines.map((line, idx) => {
         const tid = vendorLineProductTypeValue(line.product_type_id);
         if (!tid) {
@@ -2311,8 +2696,17 @@ export function VendorBookingProductsSection({
         return line;
       });
       return touched ? { ...c, vendorPaymentLines: next } : c;
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [products, bookingDestination, passengerCount, vendors, productTypes, orderTotalDefaultPrice, setForm]);
+
+  const tableRows = useMemo(() => {
+    const base = vendorPaymentLines?.length ? vendorPaymentLines : [emptyVendorPaymentLine()];
+    return base.map((line, originalIndex) => ({ line, originalIndex }));
+  }, [vendorPaymentLines]);
 
   return (
     <>
@@ -2325,180 +2719,70 @@ export function VendorBookingProductsSection({
             Vendor and product come from the catalogue for the selected product (keeps your saved product when editing;
             otherwise the first match by product name). Price defaults from the catalogue and can be edited.{" "}
             Total order value (Booking Details) equals Total price below (sum of each row’s unit price). You can change
-            either: editing a line updates the booking total; editing the booking total adjusts the Package line (first
-            row) so the sum matches. Quantity follows traveler
+            either: editing a line updates the booking total; editing the booking total adjusts row 1 so the sum matches.
+            Quantity follows traveler
             count when set. Total price is addition of row prices only (not × quantity).
           </p>
         ) : null}
+        {inlineProductError ? (
+          <div className="alert alert-danger py-2 small mb-2" role="alert">
+            {inlineProductError}
+          </div>
+        ) : null}
         <div className="table-responsive ta-order-table-wrap">
-          <table className="table table-sm ta-order-table align-middle">
+          <table className="table table-sm ta-order-table ta-vpay-products-inline align-middle">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>Price</th>
-                <th aria-hidden="true" />
+                <th style={{ minWidth: "12rem" }}>Product</th>
+                <th className="text-end" style={{ minWidth: "9rem" }}>
+                  Price (₹)
+                </th>
+                <th className="ta-vcol-action" aria-label="Row actions" />
               </tr>
             </thead>
             <tbody>
-              {lines.map((line, idx) => {
-                const selTid = vendorLineProductTypeValue(line.product_type_id);
-                let typeOpts = [...productTypesSorted];
-                const lineVid = String(line.vendor_id || "").trim();
-                const restrict =
-                  lineVid &&
-                  vendorTypeRestrictionsByVendorId &&
-                  typeof vendorTypeRestrictionsByVendorId === "object"
-                    ? vendorTypeRestrictionsByVendorId[lineVid]
-                    : null;
-                let usedAssignedTypeOrder = false;
-                if (Array.isArray(restrict) && restrict.length) {
-                  const allow = new Set(restrict.map((x) => Number(x)));
-                  const filtered = typeOpts.filter((t) => allow.has(Number(t.id)));
-                  if (filtered.length) {
-                    typeOpts = filtered;
-                    typeOpts.sort((a, b) => {
-                      const ia = restrict.indexOf(Number(a.id));
-                      const ib = restrict.indexOf(Number(b.id));
-                      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-                    });
-                    usedAssignedTypeOrder = true;
-                  }
-                }
-                if (selTid && !typeOpts.some((t) => vendorLineProductTypeValue(t.id) === selTid)) {
-                  const orphanType = typeMasterById.get(Number(selTid));
-                  if (orphanType) {
-                    typeOpts = [...typeOpts, orphanType];
-                  }
-                }
-                if (!usedAssignedTypeOrder) {
-                  typeOpts.sort((a, b) =>
-                    String(a.product_name || "").localeCompare(String(b.product_name || "")),
-                  );
-                }
-
-                /** Allow unit price as soon as a product is chosen (destination may be filled later). */
-                const priceDisabled = !selTid;
-
-                const typeSelectValue = vendorLineProductTypeValue(line.product_type_id);
-                const priceInputValue = vendorLineAmountInputValue(line.amount);
-
+              {tableRows.map(({ line, originalIndex }) => {
+                const tid = vendorLineProductTypeValue(line?.product_type_id);
                 return (
-                <tr key={`vpay-${idx}-${typeSelectValue || "x"}-${String(line.product_id || "")}`}>
-                  <td style={{ minWidth: "10rem" }}>
-                    <label className="form-label visually-hidden" htmlFor={`ta-vpay-ptype-${idx}`}>
-                      Product
-                    </label>
-                    <select
-                      id={`ta-vpay-ptype-${idx}`}
-                      className="form-select form-select-sm"
-                      disabled={productTypesSorted.length === 0 && !typeSelectValue}
-                      value={typeSelectValue}
-                      onChange={(e) => {
-                        const typeId = e.target.value;
-                        setForm((c) => {
-                          const raw = c.vendorPaymentLines?.length
-                            ? c.vendorPaymentLines
-                            : [emptyVendorPaymentLine()];
-                          const cur = raw[idx] || emptyVendorPaymentLine();
-                          const nextLine = vendorLineFromProductType(
-                            products,
-                            bookingDestination,
-                            typeId,
-                            passengerCount,
-                            cur,
-                            vendors,
-                          );
-                          return {
-                            ...c,
-                            vendorPaymentLines: patchVendorLines(c, idx, {
-                              product_type_id: vendorLineProductTypeValue(nextLine.product_type_id),
-                              product_id: String(nextLine.product_id ?? "").trim(),
-                              vendor_id: String(nextLine.vendor_id ?? "").trim(),
-                              amount: resolveVendorLineDefaultAmount(
-                                idx,
-                                typeId,
-                                productTypes,
-                                nextLine.amount,
-                                orderTotalDefaultPrice,
-                              ),
-                              quantity: String(nextLine.quantity ?? "1").trim() || "1",
-                            }),
-                          };
-                        });
-                      }}
-                    >
-                      <option value="">Select</option>
-                      {typeOpts.map((t) => (
-                        <option key={String(t.id)} value={vendorLineProductTypeValue(t.id)}>
-                          {t.product_name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="ta-vpay-price-cell" style={{ minWidth: "7.5rem" }}>
-                    <label className="form-label visually-hidden" htmlFor={`ta-vpay-price-${idx}`}>
-                      Price
-                    </label>
-                    <AmountFormattedInput
-                      id={`ta-vpay-price-${idx}`}
-                      className={`form-control form-control-sm${priceDisabled ? "" : " bg-white"}`}
-                      disabled={priceDisabled}
-                      autoComplete="off"
-                      placeholder={selTid ? "Unit price" : "Choose product"}
-                      aria-label="Unit price"
-                      title={selTid ? "Unit price" : "Choose product"}
-                      value={priceInputValue}
-                      onFocus={() => {
-                        if (configuredVendorProductCount === 1) {
-                          priceBaselineRef.current[idx] = String(line.amount ?? "");
-                        }
-                      }}
-                      onBlur={() => {
-                        if (configuredVendorProductCount !== 1) {
-                          return;
-                        }
-                        const baseline = priceBaselineRef.current[idx];
-                        if (baseline === undefined) {
-                          return;
-                        }
-                        window.setTimeout(() => {
-                          const raw = vendorLinesRef.current?.length
-                            ? vendorLinesRef.current
-                            : [emptyVendorPaymentLine()];
-                          const cur = String(raw[idx]?.amount ?? "").trim();
-                          if (amountStringsEqualNumerically(cur, baseline)) {
-                            return;
-                          }
-                          setPriceModalRevert({
-                            idx,
-                            amount: vendorLineAmountInputValue(baseline),
-                          });
-                          setSingleProductPriceModalOpen(true);
-                        }, 0);
-                      }}
-                      onChange={(plain) =>
-                        setForm((c) => ({
-                          ...c,
-                          vendorPaymentLines: patchVendorLines(c, idx, {
-                            amount: vendorLineAmountInputValue(plain),
-                          }),
-                        }))
-                      }
-                    />
-                  </td>
-                  <td className="text-end text-nowrap align-middle">
-                    {lines.length > 1 ? (
+                  <tr key={`vpay-inline-${originalIndex}-${tid || "empty"}`}>
+                    <td className="align-middle">
+                      <label className="form-label visually-hidden" htmlFor={`ta-vpay-product-${originalIndex}`}>
+                        Product
+                      </label>
+                      <select
+                        id={`ta-vpay-product-${originalIndex}`}
+                        className="form-select form-select-sm"
+                        value={tid}
+                        onChange={(e) => handleVendorLineProductSelect(originalIndex, e.target.value)}
+                      >
+                        <option value="">Select product</option>
+                        {productTypesSorted.map((t) => (
+                          <option key={t.id} value={vendorLineProductTypeValue(t.id)}>
+                            {t.product_name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="ta-vpay-price-cell align-middle">
+                      <label className="form-label visually-hidden" htmlFor={`ta-vpay-price-${originalIndex}`}>
+                        Price
+                      </label>
+                      <AmountFormattedInput
+                        id={`ta-vpay-price-${originalIndex}`}
+                        className="form-control form-control-sm bg-white text-end"
+                        autoComplete="off"
+                        placeholder=""
+                        value={vendorLineAmountInputValue(line.amount)}
+                        onChange={(plain) => handleVendorLineAmountChange(originalIndex, plain)}
+                      />
+                    </td>
+                    <td className="text-end text-nowrap align-middle">
                       <button
                         type="button"
                         className="btn btn-icon btn-soft-danger btn-sm"
                         aria-label="Remove row"
                         title="Remove row"
-                        onClick={() =>
-                          setForm((c) => ({
-                            ...c,
-                            vendorPaymentLines: (c.vendorPaymentLines || []).filter((_, i) => i !== idx),
-                          }))
-                        }
+                        onClick={() => removeVendorProductRow(originalIndex)}
                       >
                         <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
                           <path d="M3 4h10" />
@@ -2507,9 +2791,8 @@ export function VendorBookingProductsSection({
                           <rect x="4" y="4" width="8" height="9" rx="1" />
                         </svg>
                       </button>
-                    ) : null}
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -2517,44 +2800,38 @@ export function VendorBookingProductsSection({
               <tr className="ta-vpay-grand-total table-light">
                 <td className="border-top" />
                 <td className="border-top">
-                  <span
-                    className="small text-muted text-uppercase fw-semibold me-2"
-                    title="Sum of each row’s price (addition only, not × quantity)"
-                  >
-                    Total price
-                  </span>
-                  <span className="fw-semibold" aria-live="polite">
-                    {grandTotalLabel}
-                  </span>
+                  <div className="text-end">
+                    <div className="fw-semibold" aria-live="polite">
+                      {grandTotalLabel}
+                    </div>
+                    <div
+                      className="small text-muted text-uppercase fw-semibold"
+                      title="Sum of each row’s price (addition only, not × quantity)"
+                    >
+                      Total price (₹)
+                    </div>
+                  </div>
                 </td>
                 <td className="border-top" />
+              </tr>
+              <tr className="ta-vpay-add-product-row table-light">
+                <td className="border-0 pt-2 pb-2">
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm p-0 border-0 shadow-none fw-semibold text-decoration-underline"
+                    onClick={addVendorProductRow}
+                  >
+                    Add product
+                  </button>
+                </td>
+                <td className="border-0" />
+                <td className="border-0" />
               </tr>
             </tfoot>
           </table>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm mt-3 px-4 fw-semibold"
-          onClick={() => setAddProductLineModalOpen(true)}
-        >
-          Add more
-        </button>
       </div>
     </div>
-    <ConfirmActionModal
-      open={addProductLineModalOpen}
-      title="Add product line"
-      message={CONFIRM_ADD_PRODUCT_LINE_MESSAGE}
-      confirmLabel="Continue"
-      onCancel={() => setAddProductLineModalOpen(false)}
-      onConfirm={() => {
-        setAddProductLineModalOpen(false);
-        setForm((c) => ({
-          ...c,
-          vendorPaymentLines: [...(c.vendorPaymentLines || []), emptyVendorPaymentLine()],
-        }));
-      }}
-    />
     <ConfirmActionModal
       open={singleProductPriceModalOpen}
       title="Modify amount"
@@ -2736,7 +3013,6 @@ export function BookingFormModal({
       />
       <div className="row g-3">
         <CustomerAutocomplete
-          label="Customer"
           value={form.customer_id}
           required
           onChange={handleCustomerChange}
@@ -2826,6 +3102,10 @@ export function BookingFormModal({
         <TextField
           label="DRC No"
           value={form.drc_no}
+          maxLength={100}
+          autoComplete="off"
+          placeholder="e.g. DRC-2026-A01 (letters, numbers, unique)"
+          title="Reference shown on booking list and proforma invoice; must be unique per booking"
           onChange={(value) => setForm((current) => ({ ...current, drc_no: value }))}
         />
         <TextField
@@ -2858,10 +3138,13 @@ export function BookingFormModal({
           }
         />
         <TextField
-          label="Estimated Margin"
+          label="Estimated margin %"
           type="number"
           step="0.01"
           min="0"
+          max={100}
+          required
+          title="Enter a number from 0 to 100 (decimals allowed, e.g. 12.5)"
           value={form.estimated_margin == null ? "" : String(form.estimated_margin)}
           onChange={(value) =>
             setForm((current) => ({ ...current, estimated_margin: value }))

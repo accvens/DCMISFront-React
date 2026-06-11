@@ -69,12 +69,20 @@ function ManageProductTypesPage({ token, apiRequest, canCreate, canUpdate, canDe
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add products.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update products.");
+      return;
+    }
     if (!form.product_name.trim()) {
       setFormError("Product name is required.");
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(

@@ -4,7 +4,9 @@ import { FormModal, SelectField, TextField } from "../access/AccessShared.jsx";
 import { BookingAlertMessage } from "./BookingAlertMessage.jsx";
 import {
   createEmptyCustomerForm,
+  parseOptionalTenDigitMobile,
   validateCustomerForm,
+  validateOptionalTenDigitContact,
 } from "../customers/CustomersShared.jsx";
 
 function emptyTravelerForm(customerId) {
@@ -17,7 +19,12 @@ function emptyTravelerForm(customerId) {
     nationality_country_id: "",
     contact_number: "",
     email: "",
-    traveler_type_id: "",
+    pan_number: "",
+    aadhaar_number: "",
+    passport_number: "",
+    name_as_per_passport: "",
+    passport_expiry_date: "",
+    address: "",
   };
 }
 
@@ -34,6 +41,24 @@ function validateTravelerQuick(f) {
   if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
     return "Enter a valid email address.";
   }
+  const contactErr = validateOptionalTenDigitContact(f.contact_number);
+  if (contactErr) {
+    return contactErr;
+  }
+  const pan = String(f.pan_number || "").trim();
+  if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan)) {
+    return "Enter a valid PAN Number (e.g. ABCDE1234F).";
+  }
+  const aadDigits = String(f.aadhaar_number || "").replace(/\D/g, "");
+  if (String(f.aadhaar_number || "").trim() && aadDigits.length !== 12) {
+    return "Aadhaar number must be exactly 12 digits.";
+  }
+  const passNum = String(f.passport_number || "").trim();
+  const passName = String(f.name_as_per_passport || "").trim();
+  const passExpiry = String(f.passport_expiry_date || "").trim();
+  if ((passName || passExpiry) && !passNum) {
+    return "Passport number is required when passport name or expiry date is filled in.";
+  }
   return "";
 }
 
@@ -47,8 +72,6 @@ export function useBookingReferenceCreateModals({
   canCreateTraveler,
   customers,
   setCustomers,
-  travelers,
-  setTravelers,
   selectedCustomerId,
   onCustomerCreated,
   onTravelerCreated,
@@ -65,41 +88,27 @@ export function useBookingReferenceCreateModals({
   const [trRowIndex, setTrRowIndex] = useState(null);
 
   const [countries, setCountries] = useState([]);
-  const [travelerTypes, setTravelerTypes] = useState([]);
 
   const countryOptions = useMemo(
-    () => [
-      { value: "", label: "—" },
-      ...countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
-    ],
+    () => countries.map((c) => ({ value: String(c.id), label: c.name || `Country #${c.id}` })),
     [countries],
   );
 
-  const travelerTypeOptions = useMemo(
-    () => [
-      { value: "", label: "—" },
-      ...travelerTypes.map((t) => ({ value: String(t.id), label: t.name || `Type #${t.id}` })),
-    ],
-    [travelerTypes],
-  );
 
   useEffect(() => {
     let active = true;
     Promise.all([
       apiRequest("/masters/countries/options", { token }),
-      apiRequest("/masters/traveler-types/options", { token }),
     ])
-      .then(([co, tt]) => {
+      .then(([co]) => {
         if (!active) {
           return;
         }
         setCountries(Array.isArray(co) ? co : []);
-        setTravelerTypes(Array.isArray(tt) ? tt : []);
       })
       .catch(() => {
         if (active) {
           setCountries([]);
-          setTravelerTypes([]);
         }
       });
     return () => {
@@ -120,14 +129,19 @@ export function useBookingReferenceCreateModals({
     if (!selectedCustomerId) {
       return;
     }
+    const selectedCustomer = (customers || []).find((c) => String(c?.id) === String(selectedCustomerId));
     setTrForm({
       ...emptyTravelerForm(selectedCustomerId),
       first_name: String(q || "").trim(),
+      nationality_country_id:
+        selectedCustomer?.country_id != null && String(selectedCustomer.country_id).trim() !== ""
+          ? String(selectedCustomer.country_id)
+          : "",
     });
     setTrErr("");
     setTrRowIndex(rowIndex ?? null);
     setTrOpen(true);
-  }, [selectedCustomerId]);
+  }, [selectedCustomerId, customers]);
 
   async function submitCustomer(e) {
     e.preventDefault();
@@ -146,7 +160,7 @@ export function useBookingReferenceCreateModals({
           first_name: custForm.first_name.trim(),
           last_name: custForm.last_name.trim(),
           email: custForm.email.trim() || null,
-          contact_number: custForm.contact_number.trim() || null,
+          contact_number: parseOptionalTenDigitMobile(custForm.contact_number),
           gender: custForm.gender || null,
           address: custForm.address.trim() || null,
           city: custForm.city.trim() || null,
@@ -186,12 +200,19 @@ export function useBookingReferenceCreateModals({
           nationality_country_id: trForm.nationality_country_id
             ? Number(trForm.nationality_country_id)
             : null,
-          contact_number: trForm.contact_number.trim() || null,
+          contact_number: parseOptionalTenDigitMobile(trForm.contact_number),
           email: trForm.email.trim() || null,
-          traveler_type_id: trForm.traveler_type_id ? Number(trForm.traveler_type_id) : null,
+          pan_number: trForm.pan_number.trim() || null,
+          aadhaar_number: (() => {
+            const d = String(trForm.aadhaar_number || "").replace(/\D/g, "");
+            return d.length === 12 ? d : null;
+          })(),
+          address: trForm.address.trim() || null,
+          passport_number: String(trForm.passport_number || "").trim() || null,
+          passport_expiry_date: String(trForm.passport_expiry_date || "").trim() || null,
+          name_as_per_passport: String(trForm.name_as_per_passport || "").trim() || null,
         },
       });
-      setTravelers((list) => [...list, created]);
       onTravelerCreated?.(created, trRowIndex);
       setTrOpen(false);
       setTrForm(emptyTravelerForm(""));
@@ -242,8 +263,12 @@ export function useBookingReferenceCreateModals({
                 onChange={(v) => setCustForm((c) => ({ ...c, email: v }))}
               />
               <TextField
-                label="Contact"
+                label="Contact number"
                 value={custForm.contact_number}
+                inputMode="numeric"
+                maxLength={15}
+                autoComplete="tel"
+                title="Enter a 10-digit mobile number (optional +91), or leave blank"
                 onChange={(v) => setCustForm((c) => ({ ...c, contact_number: v }))}
               />
               <SelectField
@@ -352,8 +377,12 @@ export function useBookingReferenceCreateModals({
                 options={countryOptions}
               />
               <TextField
-                label="Contact"
+                label="Contact number"
                 value={trForm.contact_number}
+                inputMode="numeric"
+                maxLength={15}
+                autoComplete="tel"
+                title="Enter a 10-digit mobile number (optional +91), or leave blank"
                 onChange={(v) => setTrForm((c) => ({ ...c, contact_number: v }))}
               />
               <TextField
@@ -362,12 +391,49 @@ export function useBookingReferenceCreateModals({
                 value={trForm.email}
                 onChange={(v) => setTrForm((c) => ({ ...c, email: v }))}
               />
-              <SelectField
-                label="Traveler type"
-                value={trForm.traveler_type_id}
-                onChange={(v) => setTrForm((c) => ({ ...c, traveler_type_id: v }))}
-                options={travelerTypeOptions}
+              <TextField
+                label="PAN Number"
+                value={trForm.pan_number}
+                maxLength={20}
+                placeholder="e.g. ABCDE1234F"
+                onChange={(v) => setTrForm((c) => ({ ...c, pan_number: v }))}
               />
+              <TextField
+                label="Aadhaar number"
+                value={trForm.aadhaar_number}
+                inputMode="numeric"
+                maxLength={14}
+                placeholder="12 digits (spaces optional)"
+                title="12-digit Aadhaar; spaces are ignored"
+                onChange={(v) => setTrForm((c) => ({ ...c, aadhaar_number: v }))}
+              />
+              <TextField
+                label="Passport No"
+                value={trForm.passport_number}
+                maxLength={100}
+                onChange={(v) => setTrForm((c) => ({ ...c, passport_number: v }))}
+              />
+              <TextField
+                label="Name as per passport"
+                value={trForm.name_as_per_passport}
+                maxLength={250}
+                onChange={(v) => setTrForm((c) => ({ ...c, name_as_per_passport: v }))}
+              />
+              <TextField
+                label="Passport validity (expiry)"
+                type="date"
+                value={trForm.passport_expiry_date}
+                onChange={(v) => setTrForm((c) => ({ ...c, passport_expiry_date: v }))}
+              />
+              <div className="col-12 col-md-6">
+                <label className="form-label">Address</label>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  value={trForm.address}
+                  onChange={(e) => setTrForm((c) => ({ ...c, address: e.target.value }))}
+                />
+              </div>
             </div>
           </FormModal>
         ) : null}

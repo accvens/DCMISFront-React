@@ -1,5 +1,8 @@
 /* All theme colors blue – overrides Bootstrap/Minible semantic colors */
 :root {
+  --ta-font-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bs-font-sans-serif: var(--ta-font-sans);
+  --bs-body-font-family: var(--ta-font-sans);
   --bs-primary: #0a4251;
   --bs-primary-rgb: 10, 66, 81;
   --bs-secondary: #0a4251;
@@ -43,6 +46,75 @@ body {
   margin: 0;
   min-width: 320px;
   padding: 0;
+  font-family: var(--ta-font-sans);
+}
+
+#root {
+  font-family: var(--ta-font-sans);
+}
+
+/* Minible horizontal layout sets .container-fluid and .navbar-header to max-width: 85% from 1200px up. */
+@media (min-width: 1200px) {
+  body[data-layout="horizontal"] .container-fluid,
+  body[data-layout="horizontal"] .navbar-header {
+    max-width: 100%;
+  }
+}
+
+.page-content,
+.main-content,
+body[data-layout="horizontal"] {
+  background-color: #fff;
+}
+
+/* Footer: same single-line bar on every page (override Minible absolute footer) */
+body[data-layout="horizontal"] .main-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+body[data-layout="horizontal"] .page-content {
+  flex: 1 0 auto;
+  padding-bottom: 1rem !important;
+}
+
+body[data-layout="horizontal"] .footer {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: auto !important;
+  margin-top: auto;
+  max-width: 100% !important;
+  width: 100%;
+  height: auto !important;
+  min-height: 52px;
+  padding: 0.875rem calc(var(--bs-gutter-x, 1.5rem) * 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: #fff;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: none !important;
+  color: #74788d;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+}
+
+body[data-layout="horizontal"] .footer .container-fluid {
+  width: 100%;
+  max-width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+body[data-layout="horizontal"] .footer__text {
+  margin: 0;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
 }
 
 /* Long alerts: contain height and scroll instead of overflowing the layout */
@@ -95,7 +167,7 @@ body {
   word-break: break-word;
 }
 
-/* Fixed toast stack (AlertMessage portals here) */
+/* Fixed toast stack (AlertMessage portals here) — red danger styling, fade in/out */
 .ta-toast-host {
   position: fixed;
   top: max(1rem, env(safe-area-inset-top, 0px));
@@ -121,44 +193,47 @@ body {
   pointer-events: auto;
   border-radius: 0.75rem;
   box-shadow:
-    0 10px 40px rgba(15, 23, 42, 0.12),
-    0 2px 8px rgba(15, 23, 42, 0.06);
-  animation: ta-toast-in 0.28s ease-out;
+    0 10px 28px rgba(132, 32, 41, 0.18),
+    0 2px 8px rgba(132, 32, 41, 0.1);
   opacity: 1;
-  transform: translateX(0);
-  transition:
-    opacity 0.38s ease-in,
-    transform 0.38s ease-in;
+  animation: ta-toast-fade-in 0.35s ease-out forwards;
 }
 
 .ta-toast.ta-toast--exiting {
+  animation: none;
   opacity: 0;
-  transform: translateX(12px);
+  transition: opacity 0.4s ease-in;
 }
 
 .ta-toast__alert {
   border-radius: 0.75rem;
 }
 
-@keyframes ta-toast-in {
+/* Toasts portaled to host: unified red (danger) look regardless of alert variant */
+.ta-toast-host .ta-toast .alert.ta-toast__alert {
+  background-color: #f8d7da;
+  border: 1px solid #f1aeb5;
+  color: #58151c;
+}
+
+@keyframes ta-toast-fade-in {
   from {
     opacity: 0;
-    transform: translateX(12px);
   }
 
   to {
     opacity: 1;
-    transform: translateX(0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ta-toast {
     animation: none;
+    opacity: 1;
   }
 
   .ta-toast.ta-toast--exiting {
-    transition: none;
+    transition: opacity 0.2s ease-in;
     opacity: 0;
   }
 }
@@ -594,6 +669,48 @@ a {
   gap: 0.5rem;
 }
 
+/* Manage Travelers toolbar: keep filters + actions on one line (wrap on small screens) */
+.ta-travelers-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ta-travelers-toolbar__customer {
+  flex: 0 0 260px;
+  min-width: 220px;
+}
+
+.ta-travelers-toolbar__search {
+  flex: 1 1 360px;
+  min-width: 260px;
+}
+
+/* Remove ListSearchInput hard max-width inside this toolbar */
+.ta-travelers-toolbar .ta-list-search {
+  max-width: none !important;
+}
+
+@media (min-width: 992px) {
+  .ta-toolbar-actions {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+  }
+  .ta-travelers-toolbar {
+    flex-wrap: nowrap;
+  }
+  .ta-travelers-toolbar__customer {
+    flex-basis: 320px;
+  }
+  .ta-travelers-toolbar__search {
+    min-width: 420px;
+  }
+}
+
 .ta-empty {
   color: #6c757d;
   padding: 2rem 1rem;
@@ -689,13 +806,6 @@ a {
   vertical-align: middle;
 }
 
-.footer {
-  bottom: 0;
-  left: 0;
-  padding: 20px calc(24px / 2);
-  position: relative;
-  right: 0;
-}
 
 .ta-modal {
   background: rgba(15, 23, 42, 0.12);
@@ -960,8 +1070,811 @@ input[type="file"].form-control {
   padding-bottom: 0.5rem;
 }
 
+/* Equal-height cards per row */
+.ta-dashboard .row {
+  align-items: stretch;
+}
+
+.ta-dashboard .row > [class*="col"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-dashboard .row > [class*="col"] > .ta-dash-kpi-mini {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 130px;
+  min-height: 130px;
+  max-height: 130px;
+}
+
+.ta-dashboard .row > [class*="col"] > .ta-dash-kpi-wide,
+.ta-dashboard .row > [class*="col"] > .ta-dash-panel {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100%;
+}
+
 .ta-dashboard-stat-card {
   border: 1px solid rgba(10, 66, 81, 0.12);
+}
+
+/* —— Dashboard (reference layout) —— */
+.ta-dash-kpi-mini {
+  box-sizing: border-box;
+  border-radius: 12px;
+  padding: 16px 18px;
+  height: 130px;
+  min-height: 130px;
+  max-height: 130px;
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 0;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ta-dash-kpi-mini--rose {
+  background: #fff5f2;
+  border-color: rgba(253, 126, 20, 0.18);
+}
+.ta-dash-kpi-mini--mint {
+  background: #e8f8f0;
+}
+.ta-dash-kpi-mini--sky {
+  background: #e8f2fc;
+}
+.ta-dash-kpi-mini--amber {
+  background: #fdf6e4;
+}
+
+.ta-dash-kpi-mini__head {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  margin: 0;
+}
+
+.ta-dash-kpi-mini__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ta-dash-kpi-mini--rose .ta-dash-kpi-mini__icon {
+  background: #fd7e14;
+  color: #fff;
+}
+.ta-dash-kpi-mini--mint .ta-dash-kpi-mini__icon {
+  background: #2f9e44;
+  color: #fff;
+}
+.ta-dash-kpi-mini--sky .ta-dash-kpi-mini__icon {
+  background: #1971c2;
+  color: #fff;
+}
+
+.ta-dash-kpi-mini__icon--rupee,
+.ta-dash-kpi-wide__icon--rupee {
+  align-items: center;
+  justify-content: center;
+}
+
+.ta-dash-kpi-mini__icon--rupee .ta-dash-kpi-rupee-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.ta-dash-kpi-wide__icon--rupee .ta-dash-kpi-rupee-icon {
+  display: block;
+  flex-shrink: 0;
+}
+.ta-dash-kpi-mini--amber .ta-dash-kpi-mini__icon {
+  background: #f08c00;
+  color: #fff;
+}
+
+.ta-dash-kpi-mini__label {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #495057;
+  text-transform: capitalize;
+  line-height: 1.25;
+}
+
+.ta-dash-kpi-mini__value {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 2px 0 0;
+  padding: 0;
+  font-size: clamp(1rem, 1.1vw + 0.65rem, 1.25rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #212529;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ta-dash-kpi-mini__value--accent {
+  color: #212529;
+}
+
+.ta-dash-kpi-mini__hint {
+  grid-column: 2;
+  grid-row: 3;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  align-self: start;
+}
+
+.ta-dash-kpi-mini__hint--pos {
+  color: #2b8a3e;
+}
+.ta-dash-kpi-mini__hint--neg {
+  color: #c92a2a;
+}
+.ta-dash-kpi-mini__hint--muted {
+  color: #868e96;
+}
+
+.ta-dash-kpi-mini--rose .ta-dash-kpi-mini__hint--pos,
+.ta-dash-kpi-mini--rose .ta-dash-kpi-mini__hint--neg {
+  color: #fd7e14;
+}
+.ta-dash-kpi-mini--mint .ta-dash-kpi-mini__hint--pos,
+.ta-dash-kpi-mini--mint .ta-dash-kpi-mini__hint--neg {
+  color: #2f9e44;
+}
+.ta-dash-kpi-mini--sky .ta-dash-kpi-mini__hint--pos,
+.ta-dash-kpi-mini--sky .ta-dash-kpi-mini__hint--neg {
+  color: #1971c2;
+}
+.ta-dash-kpi-mini--amber .ta-dash-kpi-mini__hint--pos,
+.ta-dash-kpi-mini--amber .ta-dash-kpi-mini__hint--neg {
+  color: #f08c00;
+}
+
+.ta-dash-kpi-wide {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.15rem 0.85rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ta-dash-kpi-wide__head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.25rem;
+}
+
+.ta-dash-kpi-wide__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ta-dash-kpi-wide__icon--orange {
+  background: #fff4e6;
+  color: #fd7e14;
+}
+.ta-dash-kpi-wide__icon--red {
+  background: #ffe3e3;
+  color: #fa5252;
+}
+.ta-dash-kpi-wide__icon--amber {
+  background: #fff9db;
+  color: #fab005;
+}
+
+.ta-dash-kpi-wide__value {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: #212529;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.ta-dash-kpi-wide__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #868e96;
+  margin-top: 0.2rem;
+}
+
+.ta-dash-kpi-wide__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  gap: 0.5rem;
+}
+
+.ta-dash-kpi-wide__delta {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ta-dash-kpi-wide__delta--pos {
+  color: #2b8a3e;
+}
+.ta-dash-kpi-wide__delta--neg {
+  color: #c92a2a;
+}
+.ta-dash-kpi-wide__delta--muted {
+  color: #868e96;
+  font-weight: 500;
+}
+
+.ta-dash-kpi-wide__link {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: #fd7e14;
+}
+.ta-dash-kpi-wide__link--red {
+  color: #fa5252;
+}
+.ta-dash-kpi-wide__link--amber {
+  color: #f08c00;
+}
+
+.ta-dash-panel {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.15rem 1.2rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ta-dash-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.ta-dash-panel__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #212529;
+  letter-spacing: -0.01em;
+}
+
+.ta-dash-panel__range {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #868e96;
+}
+
+/* Custom dashboard dropdown */
+.ta-dash-dd {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ta-dash-dd__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 132px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #212529;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.ta-dash-dd__trigger:hover {
+  border-color: #ced4da;
+}
+
+.ta-dash-dd__trigger-text {
+  text-align: left;
+}
+
+.ta-dash-dd__chev {
+  display: flex;
+  color: #495057;
+  transition: transform 0.15s ease;
+}
+
+.ta-dash-dd__chev.is-open {
+  transform: rotate(180deg);
+}
+
+.ta-dash-dd__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  min-width: 100%;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.ta-dash-dd__option {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: left;
+  color: #212529;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+.ta-dash-dd__option:hover {
+  background: #f1f3f5;
+}
+
+.ta-dash-dd__option.is-active {
+  background: #228be6;
+  color: #fff;
+  font-weight: 700;
+}
+
+.ta-dash-bar-chart {
+  display: flex;
+  gap: 0.65rem;
+  align-items: stretch;
+  min-height: 240px;
+}
+
+.ta-dash-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 0.35rem 1.5rem 0;
+  min-width: 2.5rem;
+  flex-shrink: 0;
+}
+
+.ta-dash-y-axis__tick {
+  font-size: 0.65rem;
+  color: #868e96;
+  line-height: 1;
+}
+
+.ta-dash-y-axis__unit {
+  font-size: 0.62rem;
+  color: #adb5bd;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  margin-top: 0.35rem;
+  white-space: nowrap;
+}
+
+.ta-dash-bar-chart__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ta-dash-bar-chart__plot {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.35rem;
+  border-left: 1px solid #e9ecef;
+  border-bottom: 1px solid #e9ecef;
+  padding: 0.25rem 0.35rem 0;
+  min-height: 200px;
+  background: linear-gradient(to top, transparent 0%, transparent 24%, rgba(233, 236, 239, 0.35) 24%, rgba(233, 236, 239, 0.35) 25%, transparent 25%);
+  background-size: 100% 25%;
+}
+
+.ta-dash-bar-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+}
+
+.ta-dash-bar-group:focus-visible {
+  outline: 2px solid rgba(43, 187, 173, 0.4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ta-dash-bar-group--active .ta-dash-bar {
+  opacity: 1;
+  filter: brightness(1.03);
+}
+
+.ta-dash-bar-group__tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  min-width: 9rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #fff;
+  background: #343a40;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.ta-dash-bar-group__tooltip-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ta-dash-bar-group__tooltip strong {
+  font-weight: 700;
+}
+
+.ta-dash-bar-group__bars {
+  width: 100%;
+  height: 180px;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 0.25rem;
+}
+
+.ta-dash-bar {
+  width: 42%;
+  max-width: 18px;
+  border-radius: 4px 4px 0 0;
+  min-height: 0;
+  flex-shrink: 0;
+  transition: height 0.2s ease;
+}
+
+.ta-dash-bar--sales {
+  background: linear-gradient(180deg, #ffd4b8 0%, #ffab76 100%);
+  border-radius: 6px 6px 0 0;
+}
+
+.ta-dash-bar--purchase {
+  background: linear-gradient(180deg, #f08070 0%, #e74c3c 100%);
+  border-radius: 6px 6px 0 0;
+}
+
+.ta-dash-bar-group__label {
+  font-size: 0.65rem;
+  color: #868e96;
+  text-align: center;
+  margin-top: 0.35rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.ta-dash-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.8125rem;
+  color: #495057;
+}
+
+.ta-dash-chart-legend--center {
+  justify-content: center;
+  padding-top: 0.65rem;
+}
+
+.ta-dash-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+.ta-dash-legend-dot--sales {
+  background: #ffc9a8;
+}
+.ta-dash-legend-dot--purchase {
+  background: #e8594a;
+}
+
+.ta-dash-donut-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.5rem 2rem;
+  margin-bottom: 1.35rem;
+  padding-bottom: 0.25rem;
+}
+
+.ta-dash-tip-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  cursor: help;
+}
+
+.ta-dash-tip-wrap:focus {
+  outline: none;
+}
+
+.ta-dash-tip-wrap:focus-visible {
+  outline: 2px solid rgba(43, 187, 173, 0.45);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ta-dash-tip {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  padding: 0.45rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #fff;
+  background: #343a40;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+}
+
+.ta-dash-tip-wrap--bottom .ta-dash-tip {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+.ta-dash-tip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #343a40;
+}
+
+.ta-dash-tip-wrap--bottom .ta-dash-tip::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #343a40;
+}
+
+.ta-dash-customer-split .ta-dash-tip-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  cursor: default;
+}
+
+.ta-dash-overall-stats__cell {
+  flex: 1;
+  min-width: 0;
+  cursor: help;
+}
+
+.ta-dash-radial-chart-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ta-dash-radial-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ta-dash-radial-chart__arc--active {
+  filter: brightness(1.05);
+}
+
+.ta-dash-radial-chart__center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  max-width: 72%;
+}
+
+.ta-dash-radial-chart__center-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #868e96;
+  line-height: 1.2;
+}
+
+.ta-dash-radial-chart__center-label--first {
+  color: #2e8b57;
+}
+
+.ta-dash-radial-chart__center-label--return {
+  color: #d4a017;
+}
+
+.ta-dash-radial-chart__center-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #212529;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-top: 0.1rem;
+}
+
+.ta-dash-radial-chart__center-detail {
+  font-size: 0.625rem;
+  color: #868e96;
+  margin-top: 0.2rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ta-dash-customer-split {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 200px;
+}
+
+.ta-dash-customer-split__col {
+  flex: 1;
+  min-width: 0;
+}
+
+.ta-dash-customer-split__num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #212529;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.ta-dash-customer-split__lbl {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+}
+
+.ta-dash-customer-split__lbl--first {
+  color: #2e8b57;
+}
+
+.ta-dash-customer-split__lbl--return {
+  color: #d4a017;
+}
+
+.ta-dash-customer-split__sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 48px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.ta-dash-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ta-dash-pill__icon {
+  flex-shrink: 0;
+}
+
+.ta-dash-pill--green,
+.ta-dash-pill--pos {
+  background: #2e8b57;
+  color: #fff;
+}
+
+.ta-dash-overall-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  padding-top: 1rem;
+  margin-top: 0.15rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  gap: 0.5rem;
+}
+
+.ta-dash-overall-stats__num {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #212529;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ta-dash-overall-stats__lbl {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #868e96;
+  margin-top: 0.2rem;
+}
+
+.ta-dash-overall-stats__sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 40px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.ta-link-booking {
+  color: #228be6;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ta-link-booking:hover {
+  text-decoration: underline;
 }
 
 .ta-order-entry {
@@ -972,7 +1885,7 @@ input[type="file"].form-control {
 .ta-booking-editor {
   position: relative;
   min-height: calc(100vh - 120px);
-  background: #f4f7f9;
+  background: #fff;
 }
 
 .ta-booking-editor--loading,
@@ -990,14 +1903,14 @@ input[type="file"].form-control {
 
 .ta-booking-editor__container {
   position: relative;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 0.5rem 1rem 6.5rem;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 1rem;
 }
 
 @media (min-width: 768px) {
   .ta-booking-editor__container {
-    padding: 0.65rem 1.5rem 6.75rem;
+    padding: 0 0 1.25rem;
   }
 }
 
@@ -1081,7 +1994,7 @@ input[type="file"].form-control {
 }
 
 .ta-booking-editor-form .ta-booking-editor__body {
-  padding-bottom: 0.5rem;
+  padding: 0;
 }
 
 .ta-booking-editor-actions {
@@ -1100,7 +2013,7 @@ input[type="file"].form-control {
 }
 
 .ta-booking-editor-actions__inner {
-  max-width: 1180px;
+  max-width: none;
   margin: 0 auto;
   padding: 0 1rem;
   display: grid;
@@ -1205,7 +2118,7 @@ input[type="file"].form-control {
 }
 
 .ta-booking-wizard-tabstrip {
-  border-bottom: 1px solid rgba(10, 66, 81, 0.1);
+  border-bottom: none;
 }
 
 .ta-booking-wizard-tabstrip__row {
@@ -1216,10 +2129,115 @@ input[type="file"].form-control {
   gap: 1rem 1.25rem;
 }
 
+.ta-booking-wizard-tabstrip__row--summary-left {
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+}
+
+/* Wizard header: one horizontal row of tab-style total tiles (left of step tabs) */
+.ta-booking-wizard-totals-section {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 0;
+  align-self: center;
+}
+
+.ta-booking-wizard-totals-stack {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.35rem;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.1rem;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ta-booking-wizard-totals-tile {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  min-width: 4.85rem;
+  max-width: 6.5rem;
+  padding: 0.42rem 0.45rem 0.48rem;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: #3d5a63;
+  box-shadow: 0 1px 3px rgba(10, 66, 81, 0.06);
+  border: 1px solid rgba(10, 66, 81, 0.08);
+  text-align: left;
+}
+
+.ta-booking-wizard-totals-tile__label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #063542;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+.ta-booking-wizard-totals-tile__value {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #0a4251;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.ta-booking-wizard-totals-tile__sub {
+  font-size: 0.54rem !important;
+  line-height: 1.25;
+  margin-top: 0.05rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.ta-booking-wizard-totals-tile__track {
+  height: 4px;
+  margin-top: 0.12rem;
+}
+
+@media (min-width: 992px) {
+  .ta-booking-wizard-totals-tile {
+    flex: 0 0 8.35rem;
+    min-width: 8.35rem;
+    max-width: 8.35rem;
+    padding: 0.48rem 0.5rem 0.52rem;
+  }
+
+  .ta-booking-wizard-totals-tile__label {
+    font-size: 0.6rem;
+  }
+
+  .ta-booking-wizard-totals-tile__value {
+    font-size: 0.76rem;
+  }
+
+  .ta-booking-wizard-totals-tile__sub {
+    font-size: 0.56rem !important;
+  }
+}
+
 .ta-booking-tabs--main {
   flex: 1 1 0;
   min-width: min(100%, 17rem);
   justify-content: flex-start;
+}
+
+/* Booking wizard: step tabs stay right-aligned and sized like totals tiles (no flex-grow strip). */
+.ta-booking-tabs--main.ta-booking-tabs--wizard-end {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-end;
 }
 
 .ta-booking-wizard-pay-progress {
@@ -1232,8 +2250,42 @@ input[type="file"].form-control {
   padding: 0.15rem 0 0;
 }
 
+.ta-booking-wizard-pay-progress--compact {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.35rem;
+  padding: 0;
+}
+
+.ta-booking-pay-progress__rule {
+  margin: 0.1rem 0;
+  border: 0;
+  border-top: 1px solid rgba(10, 66, 81, 0.12);
+  opacity: 1;
+}
+
+.ta-booking-wizard-pay-progress--compact .ta-booking-pay-progress__title {
+  font-size: 0.62rem;
+}
+
+.ta-booking-wizard-pay-progress--compact .ta-booking-pay-progress__pct {
+  font-size: 0.65rem;
+}
+
+.ta-booking-wizard-pay-progress--compact .ta-booking-pay-progress__sub {
+  font-size: 0.58rem !important;
+  line-height: 1.25;
+  margin-top: 0;
+}
+
+.ta-booking-wizard-pay-progress--compact .ta-booking-pay-progress__track {
+  height: 4px;
+  margin-top: 0.1rem;
+}
+
 @media (min-width: 992px) {
-  .ta-booking-wizard-pay-progress {
+  .ta-booking-wizard-pay-progress:not(.ta-booking-wizard-pay-progress--compact) {
     flex-basis: 17rem;
     padding-top: 0.35rem;
   }
@@ -1286,6 +2338,8 @@ input[type="file"].form-control {
 }
 
 .ta-booking-pay-progress__track {
+  width: 100%;
+  min-width: 0;
   height: 6px;
   border-radius: 999px;
   background: rgba(10, 66, 81, 0.1);
@@ -1406,6 +2460,51 @@ input[type="file"].form-control {
   }
 }
 
+.ta-booking-wizard-tabstrip--compact .ta-booking-tab {
+  flex: 0 0 auto;
+  min-width: 4.85rem;
+  max-width: 6.5rem;
+  padding: 0.42rem 0.45rem 0.48rem;
+  gap: 0.28rem;
+  font-size: 0.62rem;
+  border-radius: 0.55rem;
+}
+
+@media (min-width: 992px) {
+  .ta-booking-wizard-tabstrip--compact .ta-booking-tab {
+    flex: 0 0 8.35rem;
+    min-width: 8.35rem;
+    max-width: 8.35rem;
+    padding: 0.48rem 0.5rem 0.52rem;
+    font-size: 0.64rem;
+  }
+}
+
+.ta-booking-wizard-tabstrip--compact .ta-booking-tab__icon {
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+.ta-booking-wizard-tabstrip--compact .ta-booking-tab__svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.ta-booking-wizard-tabstrip--compact .ta-booking-tab__step {
+  min-width: 1.2rem;
+  height: 1.2rem;
+  font-size: 0.58rem;
+}
+
+.ta-booking-wizard-tabstrip--compact .ta-booking-tab__rail {
+  bottom: 0.28rem;
+  height: 2px;
+}
+
+.ta-booking-wizard-tabstrip--compact .ta-booking-tab:hover {
+  transform: none;
+}
+
 .ta-booking-tab:hover {
   background: #fff;
   color: #0a4251;
@@ -1523,6 +2622,11 @@ input[type="file"].form-control {
   font-size: 0.9rem;
 }
 
+/* Wizard sections: title + primary action on one row */
+.ta-order-section .card-header.d-flex > span {
+  min-width: 0;
+}
+
 .ta-order-section-title {
   background: rgba(255, 152, 0, 0.15);
   color: #333;
@@ -1551,6 +2655,21 @@ input[type="file"].form-control {
   padding-top: 1rem;
 }
 
+/* Products step: inline product + price per row (no modal). */
+.ta-vpay-products-inline td .form-select,
+.ta-vpay-products-inline td .form-control {
+  min-width: 0;
+  width: 100%;
+}
+
+.ta-vpay-products-inline .ta-vpay-price-cell {
+  max-width: 12rem;
+}
+
+.ta-vpay-add-product-row .btn {
+  white-space: nowrap;
+}
+
 .ta-vpay-date-group .form-control {
   min-height: calc(1.5em + 0.5rem + 2px);
 }
@@ -1567,13 +2686,600 @@ input[type="file"].form-control {
   line-height: 1.2;
 }
 
+/* —— Create / edit booking wizard (reference mock layout) —— */
+.ta-booking-wizard-stack--step-0 {
+  --ta-wizard-accent: #17a2b8;
+  --ta-wizard-accent-dark: #138496;
+  --ta-wizard-accent-bg: #e8f6fa;
+  --ta-wizard-accent-border: #5dade2;
+  --ta-wizard-accent-soft: rgba(23, 162, 184, 0.14);
+}
+
+.ta-booking-wizard-stack--step-1 {
+  --ta-wizard-accent: #f0ad4e;
+  --ta-wizard-accent-dark: #ec971f;
+  --ta-wizard-accent-bg: #fff8e6;
+  --ta-wizard-accent-border: #f5d78e;
+  --ta-wizard-accent-soft: rgba(240, 173, 78, 0.2);
+}
+
+.ta-booking-wizard-stack--step-2 {
+  --ta-wizard-accent: #9b59b6;
+  --ta-wizard-accent-dark: #8e44ad;
+  --ta-wizard-accent-bg: #f3ebf8;
+  --ta-wizard-accent-border: #d7bde2;
+  --ta-wizard-accent-soft: rgba(155, 89, 182, 0.16);
+}
+
+.ta-booking-wizard-stack--step-3 {
+  --ta-wizard-accent: #28a745;
+  --ta-wizard-accent-dark: #218838;
+  --ta-wizard-accent-bg: #eaf7ee;
+  --ta-wizard-accent-border: #9fd4ad;
+  --ta-wizard-accent-soft: rgba(40, 167, 69, 0.16);
+}
+
+.ta-booking-wizard-stack--step-4 {
+  --ta-wizard-accent: #fd7e14;
+  --ta-wizard-accent-dark: #e96b00;
+  --ta-wizard-accent-bg: #fff4e8;
+  --ta-wizard-accent-border: #f8c99a;
+  --ta-wizard-accent-soft: rgba(253, 126, 20, 0.18);
+}
+
+.ta-booking-wizard-tabstrip--reference {
+  border-bottom: none;
+  background: transparent;
+}
+
+/* Row: step boxes (50% width) + financial summary (fixed width) */
+.ta-booking-wizard-tabstrip--reference.ta-booking-tabs-rail {
+  --ta-wizard-step-gap: 0.5rem;
+  --ta-wizard-section-gap: 1rem;
+  --ta-wizard-step-h: 3.75rem;
+  background: transparent;
+  border-radius: 0;
+  padding: 0.6rem 0 0.65rem;
+  border-bottom: none;
+}
+
+/* Align wizard header, form panel, and toolbar with horizontal nav (container-fluid edges) */
+.ta-order-entry--editor .ta-booking-wizard-stack > .card-body.ta-booking-wizard-stack__tabstrip,
+.ta-order-entry--editor .ta-booking-wizard-stack > .card-body.ta-booking-wizard-stack__panel,
+.ta-order-entry--editor .ta-booking-wizard-stack > .card-body.ta-booking-wizard-stack__toolbar {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.ta-booking-wizard-tabstrip__grid {
+  display: grid;
+  grid-template-columns: 1fr minmax(16rem, 21rem);
+  column-gap: var(--ta-wizard-section-gap);
+  row-gap: var(--ta-wizard-step-gap);
+  align-items: stretch;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.ta-booking-wizard-tabstrip__steps-nav {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--ta-wizard-step-gap);
+  grid-column: 1;
+  min-width: 0;
+  width: 60%;
+  max-width: 60%;
+  justify-self: start;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-wizard-totals-section {
+  grid-column: 2;
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  align-self: stretch;
+  justify-self: end;
+}
+
+.ta-booking-wizard-totals--summary-bar.ta-booking-wizard-totals-stack {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  width: 100%;
+  height: var(--ta-wizard-step-h);
+  min-height: var(--ta-wizard-step-h);
+  max-height: var(--ta-wizard-step-h);
+  padding: 0.35rem 0.25rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #f8f9fa;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  padding: 0.15rem 0.45rem;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+  justify-content: center;
+  gap: 0.08rem;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile + .ta-booking-wizard-totals-tile {
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile__label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #495057;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile__value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #212529;
+  margin-top: 0;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile--received .ta-booking-wizard-totals-tile__value {
+  color: #28a745;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile--vendor .ta-booking-wizard-totals-tile__value {
+  color: #fd7e14;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile__sub {
+  font-size: 0.6rem !important;
+  color: #6c757d !important;
+  margin-top: 0;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile__track {
+  display: none;
+}
+
+/* Reset legacy .ta-booking-tab flex sizing inside reference wizard strip */
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab {
+  position: relative;
+  display: flex !important;
+  flex: none !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0.4rem;
+  box-sizing: border-box;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: var(--ta-wizard-step-h) !important;
+  min-height: var(--ta-wizard-step-h) !important;
+  max-height: var(--ta-wizard-step-h) !important;
+  aspect-ratio: auto !important;
+  padding: 0.35rem 0.45rem;
+  margin: 0;
+  border: 1px solid var(--ta-wizard-step-border, #dee2e6) !important;
+  border-radius: 8px;
+  background: #fff;
+  color: #212529;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: normal;
+  text-align: left;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+  overflow: hidden;
+  justify-self: stretch;
+  align-self: stretch;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab__icon,
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab__rail {
+  display: none !important;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab__step {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--ta-wizard-step-badge-bg, #17a2b8);
+  color: var(--ta-wizard-step-badge-color, #fff);
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab__label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.06rem;
+  overflow: hidden;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab__label-line {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.08;
+  color: inherit;
+  /* Each line is provided by JSX (labelLines). Keep it single-line. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+  max-width: 100%;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--step-0 {
+  --ta-wizard-step-border: #7ec8e3;
+  --ta-wizard-step-badge-bg: #17a2b8;
+  --ta-wizard-step-active-bg: #e8f6fa;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--step-1 {
+  --ta-wizard-step-border: #f0d78c;
+  --ta-wizard-step-badge-bg: #f0ad4e;
+  --ta-wizard-step-active-bg: #fff8e6;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--step-2 {
+  --ta-wizard-step-border: #c8e6c9;
+  --ta-wizard-step-badge-bg: #28a745;
+  --ta-wizard-step-active-bg: #f1f9f3;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--step-3 {
+  --ta-wizard-step-border: #7ec8e3;
+  --ta-wizard-step-badge-bg: #17a2b8;
+  --ta-wizard-step-active-bg: #e8f6fa;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--step-4 {
+  --ta-wizard-step-border: #f8c99a;
+  --ta-wizard-step-badge-bg: #17a2b8;
+  --ta-wizard-step-active-bg: #fff4e8;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--active {
+  background: var(--ta-wizard-step-active-bg, #fff) !important;
+  border-color: var(--ta-wizard-step-border, #dee2e6) !important;
+  border-width: 1px;
+  color: #212529 !important;
+  box-shadow: none !important;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--active .ta-booking-tab__step {
+  background: var(--ta-wizard-step-badge-bg, #17a2b8) !important;
+  color: #fff !important;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--step-4.ta-booking-tab--active {
+  background: #fff4e8 !important;
+  border-color: #f8c99a !important;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab--done:not(.ta-booking-tab--active) {
+  background: #fff !important;
+  color: #495057 !important;
+}
+
+.ta-booking-wizard-tabstrip--reference .ta-booking-tab:hover:not(.ta-booking-tab--active) {
+  background: #fff !important;
+  border-color: var(--ta-wizard-step-border, #dee2e6) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  transform: none !important;
+}
+
+@media (min-width: 992px) {
+  .ta-booking-wizard-tabstrip--reference .ta-booking-tab {
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0.35rem 0.45rem;
+    font-size: inherit;
+  }
+}
+
+.ta-booking-wizard-stack {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.ta-booking-wizard-panel {
+  border-top: none;
+  background: #fff;
+  min-width: 0;
+  overflow: visible;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .ta-order-section--wizard-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .ta-order-section--wizard-panel {
+  border: 1px solid var(--ta-wizard-accent-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .ta-order-section--wizard-panel > .card-header:not(.d-flex) {
+  display: none;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .ta-order-section--wizard-panel > .card-header.d-flex {
+  background: transparent !important;
+  border: none;
+  padding: 0 0 0.85rem;
+  font-weight: 600;
+  color: #212529;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .ta-order-section--wizard-panel > .card-body {
+  padding: 1.1rem 1.15rem 1.25rem;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.35rem;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .form-control,
+.ta-order-entry--editor .ta-booking-wizard-stack .form-select {
+  border-color: var(--ta-wizard-accent-border);
+  border-radius: 6px;
+  min-height: 2.35rem;
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .form-control:focus,
+.ta-order-entry--editor .ta-booking-wizard-stack .form-select:focus {
+  border-color: var(--ta-wizard-accent);
+  box-shadow: 0 0 0 0.15rem var(--ta-wizard-accent-soft);
+}
+
+.ta-order-entry--editor .ta-booking-wizard-stack .form-control-plaintext.border {
+  border-color: var(--ta-wizard-accent-border) !important;
+  border-radius: 6px;
+  min-height: 2.35rem;
+}
+
+/* Booking Details (step 1) — uniform 3-column fields */
+.ta-booking-details-form {
+  --ta-booking-field-h: 2.5rem;
+}
+
+.ta-booking-details-form > [class*="col"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-booking-details-form .form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.35rem;
+  line-height: 1.3;
+}
+
+.ta-booking-details-form .form-control,
+.ta-booking-details-form .form-select {
+  min-height: var(--ta-booking-field-h);
+  border-radius: 6px;
+  border-color: var(--ta-wizard-accent-border, #7ec8e3);
+  font-size: 0.875rem;
+}
+
+.ta-booking-details-form .form-control:focus,
+.ta-booking-details-form .form-select:focus {
+  border-color: var(--ta-wizard-accent, #17a2b8);
+  box-shadow: 0 0 0 0.15rem var(--ta-wizard-accent-soft, rgba(23, 162, 184, 0.14));
+}
+
+.ta-booking-details-form .form-control[readonly],
+.ta-booking-details-form .form-control:read-only {
+  background-color: #fff;
+  color: #495057;
+  cursor: default;
+}
+
+.ta-booking-details-form .form-control::placeholder {
+  color: #adb5bd;
+}
+
+.ta-booking-details-form input[type="date"].form-control {
+  padding-right: 0.5rem;
+}
+
+.ta-booking-details-form .position-relative {
+  width: 100%;
+}
+
+.ta-booking-wizard-stack--step-0 .ta-order-table thead,
+.ta-booking-wizard-stack--step-0 .ta-order-section-title {
+  background: var(--ta-wizard-accent-bg) !important;
+}
+
+.ta-booking-wizard-stack--step-1 .ta-order-table thead,
+.ta-booking-wizard-stack--step-1 .ta-order-section-title,
+.ta-booking-wizard-stack--step-1 .ta-order-section-title-vendorpay {
+  background: var(--ta-wizard-accent-bg) !important;
+  color: #212529 !important;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-order-table thead,
+.ta-booking-wizard-stack--step-2 .ta-order-section-title-alt {
+  background: var(--ta-wizard-accent-bg) !important;
+  color: #212529 !important;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-order-table thead,
+.ta-booking-wizard-stack--step-3 .ta-order-section-title-pay {
+  background: var(--ta-wizard-accent-bg) !important;
+  color: #212529 !important;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-order-table thead,
+.ta-booking-wizard-stack--step-4 .ta-order-section-title-alt,
+.ta-booking-wizard-stack--step-4 .ta-order-section-title-vendorpay {
+  background: var(--ta-wizard-accent-bg) !important;
+  color: #212529 !important;
+}
+
+.ta-booking-wizard-stack .ta-order-table thead th {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #212529;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  white-space: nowrap;
+}
+
+.ta-booking-wizard-toolbar-strip {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  border-radius: 0;
+}
+
+.ta-booking-wizard-stack .ta-booking-editor-actions__step-btn {
+  min-width: 5.75rem;
+  padding: 0.45rem 1.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--ta-wizard-accent-border) !important;
+  background: #fff !important;
+  color: #212529 !important;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.ta-booking-wizard-stack .ta-booking-editor-actions__step-btn:hover:not(:disabled) {
+  background: var(--ta-wizard-accent-bg) !important;
+  color: #212529 !important;
+}
+
+.ta-booking-wizard-stack .ta-booking-editor-actions__submit {
+  min-width: 5.75rem;
+  padding: 0.45rem 1.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--ta-wizard-accent-dark) !important;
+  background: var(--ta-wizard-accent) !important;
+  color: #212529 !important;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.ta-booking-wizard-stack .ta-booking-editor-actions__submit:hover:not(:disabled) {
+  filter: brightness(0.97);
+  color: #212529 !important;
+}
+
+.ta-booking-wizard-stack .ta-booking-wizard-toolbar__hint {
+  display: none;
+}
+
+@media (max-width: 1199.98px) {
+  .ta-booking-wizard-tabstrip__grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ta-wizard-step-gap);
+  }
+
+  .ta-booking-wizard-tabstrip__steps-nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(6.75rem, 6.75rem));
+    gap: var(--ta-wizard-step-gap);
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0.1rem;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ta-booking-wizard-tabstrip--reference .ta-booking-wizard-totals-section {
+    grid-column: auto;
+    width: 100%;
+  }
+
+  .ta-booking-wizard-tabstrip--reference .ta-booking-tab {
+    width: 6.75rem !important;
+    min-width: 6.75rem !important;
+    max-width: 6.75rem !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .ta-booking-wizard-totals--summary-bar.ta-booking-wizard-totals-stack {
+    flex-wrap: wrap;
+  }
+
+  .ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile {
+    flex: 1 1 100%;
+    border-left: none !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    padding-top: 0.55rem;
+  }
+
+  .ta-booking-wizard-totals--summary-bar .ta-booking-wizard-totals-tile:first-child {
+    border-top: none;
+    padding-top: 0.2rem;
+  }
+}
+
 .ta-order-table-wrap {
   overflow-x: auto;
 }
 
 @media (min-width: 992px) {
+  /* Keep horizontal scrolling available on large screens too — some booking grids are wider than the card. */
   .ta-order-entry .ta-order-table-wrap {
-    overflow: visible;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Wide vendor line grid must stay in a horizontal scroller on desktop too */
@@ -1585,26 +3291,70 @@ input[type="file"].form-control {
   .ta-order-entry .ta-order-table-wrap.ta-order-custpay-table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(10, 66, 81, 0.35) rgba(10, 66, 81, 0.06);
+  }
+
+  .ta-order-entry .ta-order-table-wrap.ta-order-custpay-table-wrap::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .ta-order-entry .ta-order-table-wrap.ta-order-custpay-table-wrap::-webkit-scrollbar-thumb {
+    background: rgba(10, 66, 81, 0.3);
+    border-radius: 999px;
+  }
+
+  .ta-order-entry .ta-order-table-wrap.ta-order-custpay-table-wrap::-webkit-scrollbar-track {
+    background: rgba(10, 66, 81, 0.06);
+    border-radius: 999px;
   }
 }
 
 /* Customer payment (Sales PI): comfortable selects + receipt no width */
-.ta-custpay-table.ta-custpay-table {
+.ta-booking-wizard-stack .ta-custpay-table.ta-custpay-table--booking-wizard,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard {
+  table-layout: fixed !important;
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0 !important;
+}
+
+/* Non-wizard custpay tables keep legacy wide layout */
+.ta-custpay-table.ta-custpay-table:not(.ta-custpay-table--booking-wizard) {
+  width: max(100%, 80rem);
   table-layout: auto;
 }
 
-.ta-custpay-table th.ta-custpay-col-mode,
-.ta-custpay-table td.ta-custpay-col-mode {
+.ta-custpay-table.ta-custpay-table:not(.ta-custpay-table--booking-wizard) thead th:first-child,
+.ta-custpay-table.ta-custpay-table:not(.ta-custpay-table--booking-wizard) tbody td:first-child {
+  width: 2.75rem;
+  max-width: 3.25rem;
+}
+
+/* Sales PI grid: keep cell baselines aligned (global `.ta-order-table tbody td` uses `top`). */
+.ta-custpay-table.ta-order-table tbody td,
+.ta-custpay-table.ta-order-table thead th {
+  vertical-align: middle;
+}
+
+.ta-custpay-table .ta-table-actions {
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) th.ta-custpay-col-mode,
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) td.ta-custpay-col-mode {
   min-width: 10.5rem;
 }
 
-.ta-custpay-table th.ta-custpay-col-status,
-.ta-custpay-table td.ta-custpay-col-status {
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) th.ta-custpay-col-status,
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) td.ta-custpay-col-status {
   min-width: 7.5rem;
 }
 
-.ta-custpay-table th.ta-custpay-col-sale-pi,
-.ta-custpay-table td.ta-custpay-col-sale-pi {
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) th.ta-custpay-col-sale-pi,
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) td.ta-custpay-col-sale-pi {
   min-width: 6.5rem;
   vertical-align: middle;
 }
@@ -1613,14 +3363,18 @@ input[type="file"].form-control {
   user-select: all;
 }
 
-.ta-custpay-table th.ta-custpay-col-pi,
-.ta-custpay-table td.ta-custpay-col-pi {
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) th.ta-custpay-col-pi,
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) td.ta-custpay-col-pi {
   min-width: 9.5rem;
 }
 
-.ta-custpay-table th.ta-custpay-col-amount,
-.ta-custpay-table td.ta-custpay-col-amount {
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) th.ta-custpay-col-amount,
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) td.ta-custpay-col-amount {
   min-width: 6.5rem;
+}
+
+.ta-custpay-table thead th.ta-custpay-col-amount {
+  text-align: right;
 }
 
 .ta-custpay-table.ta-custpay-table tfoot.ta-custpay-table-tfoot td {
@@ -1662,18 +3416,37 @@ input[type="file"].form-control {
   letter-spacing: 0.06em;
 }
 
-/* Customer payment: highlight receipt / banking columns (UTR → mode) */
+/* Customer payment: keep consistent column background (no tint split). */
 .ta-custpay-table th.ta-custpay-received-head,
 .ta-custpay-table td.ta-custpay-received-cell {
-  background: rgba(25, 135, 84, 0.07);
+  background: inherit;
 }
 
 .ta-custpay-table th.ta-custpay-received-start,
 .ta-custpay-table td.ta-custpay-received-start {
-  box-shadow: inset 3px 0 0 rgba(25, 135, 84, 0.28);
+  box-shadow: none;
+  min-width: 11rem;
 }
 
-.ta-custpay-col-received {
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) thead th {
+  white-space: nowrap;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) td {
+  white-space: nowrap;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+/* Make header/cell boundaries clearer for long labels. */
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) thead th:not(:last-child),
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) tbody td:not(:last-child) {
+  border-right: 1px solid rgba(10, 66, 81, 0.08);
+}
+
+.ta-custpay-table:not(.ta-custpay-table--booking-wizard) .ta-custpay-col-received {
   min-width: 9.5rem;
 }
 
@@ -1747,6 +3520,571 @@ input[type="file"].form-control {
   vertical-align: top;
 }
 
+/* Booking wizard — Traveller Details table (reference layout) */
+.ta-booking-wizard-stack--step-2 .ta-order-section--travelers > .card-body {
+  padding-top: 0.85rem !important;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table-wrap {
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-order-section--travelers.ta-order-section--wizard-panel {
+  border: 1px solid var(--ta-wizard-accent-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table--booking-wizard {
+  margin-bottom: 0;
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: transparent;
+  --bs-table-hover-bg: transparent;
+  --bs-table-border-color: transparent;
+  border-collapse: collapse;
+  border: 0;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table--booking-wizard > :not(caption) > * > * {
+  border-left: 0;
+  border-right: 0;
+  box-shadow: none;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table--booking-wizard thead th {
+  background: var(--ta-wizard-accent-bg) !important;
+  border-top: 0;
+  border-bottom: 0;
+  text-align: left;
+  color: #212529;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table--booking-wizard tbody td {
+  padding: 0.65rem 0.85rem;
+  border-top: 0;
+  border-bottom: 0;
+  vertical-align: middle;
+  text-align: left;
+  background: #fff;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table--booking-wizard tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ta-booking-wizard-stack--step-2 .ta-travelers-table--booking-wizard .ta-tcol-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ta-travelers-add-pax {
+  padding: 0.65rem 0 0.15rem;
+}
+
+.ta-travelers-add-pax .btn-link {
+  color: #228be6;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.ta-travelers-add-pax .btn-link:disabled {
+  color: #adb5bd;
+  pointer-events: none;
+}
+
+.ta-custpay-add-new {
+  padding: 0.75rem 0 0.15rem;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-add-new {
+  padding: 0.75rem 0 0.1rem;
+}
+
+.ta-custpay-add-new .btn-link {
+  color: #228be6;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* Booking wizard — Customer Payments (Sales PI) table (reference layout) */
+.ta-booking-wizard-stack--step-3 .ta-order-section--custpay.ta-order-section--wizard-panel {
+  border: 1px solid var(--ta-wizard-accent-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-order-section--custpay > .card-body {
+  padding: 1rem 1.15rem 1.15rem !important;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-order-custpay-table-wrap {
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: transparent;
+  --bs-table-hover-bg: transparent;
+  --bs-table-border-color: transparent;
+  border-collapse: collapse;
+  border: 0;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed !important;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-sale-pi,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-pi,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-amount,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-received,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-amt-received,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-balance,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-mode,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-utr,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-remarks,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-custpay-col-action {
+  min-width: 0 !important;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard > :not(caption) > * > * {
+  border-left: 0;
+  border-right: 0;
+  box-shadow: none;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th {
+  background: var(--ta-wizard-accent-bg, #eaf7ee) !important;
+  border-top: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: left;
+  color: #212529;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th.ta-custpay-col-amount,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th.ta-custpay-col-amt-received,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th.ta-custpay-col-balance {
+  text-align: right;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tfoot .ta-custpay-col-amount,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tfoot .ta-custpay-col-amt-received,
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tfoot .ta-custpay-col-balance {
+  text-align: right !important;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tbody td {
+  padding: 0.45rem 0.4rem;
+  border-top: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  vertical-align: middle;
+  background: #fff;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tbody td.text-nowrap {
+  white-space: normal;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tfoot.ta-custpay-table-tfoot td {
+  background: #cfd8dc !important;
+  border-top: 0;
+  border-bottom: 0;
+  padding: 0.45rem 0.4rem;
+  vertical-align: middle;
+  font-weight: 600;
+  color: #212529;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tfoot .ta-custpay-totals-row td:first-child {
+  border-bottom-left-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tfoot .ta-custpay-totals-row td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard thead th:not(:last-child),
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard tbody td:not(:last-child) {
+  border-right: 0;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .ta-table-actions .btn-icon {
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.ta-booking-wizard-stack--step-3 .ta-custpay-table--booking-wizard .btn-outline-secondary.btn-icon {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+/* Booking wizard — Vendor Payments table (reference layout) */
+.ta-booking-wizard-stack--step-4 .ta-order-section--vendorpay.ta-order-section--wizard-panel {
+  border: 1px solid var(--ta-wizard-accent-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-order-section--vendorpay > .card-body {
+  padding: 1rem 1.15rem 1.15rem !important;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table-wrap {
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: transparent;
+  --bs-table-hover-bg: transparent;
+  --bs-table-border-color: transparent;
+  border-collapse: collapse;
+  border: 0;
+  width: 100%;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard > :not(caption) > * > * {
+  border-left: 0;
+  border-right: 0;
+  box-shadow: none;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard thead th {
+  background: var(--ta-wizard-accent-bg, #fff4e8) !important;
+  border-top: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: left;
+  color: #212529;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard thead th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard thead th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard thead th.text-end {
+  text-align: right;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard tbody td {
+  padding: 0.65rem 0.85rem;
+  border-top: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  vertical-align: middle;
+  background: #fff;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard tfoot.ta-vpay-table-tfoot td {
+  background: #cfd8dc !important;
+  border-top: 0;
+  border-bottom: 0;
+  padding: 0.65rem 0.85rem;
+  vertical-align: middle;
+  font-weight: 600;
+  color: #212529;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard tfoot .ta-vpay-totals-row td:first-child {
+  border-bottom-left-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard tfoot .ta-vpay-totals-row td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard thead th:not(:last-child),
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard tbody td:not(:last-child) {
+  border-right: 0;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-vpay-table--booking-wizard .ta-table-actions .btn-icon {
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.ta-vpay-add-invoice {
+  padding: 0.75rem 0 0.1rem;
+}
+
+.ta-vpay-add-invoice .btn-link {
+  color: #228be6;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* Booking wizard: fit tables in panel width (no scroll bar, show all columns) */
+.ta-booking-wizard-stack .table-responsive,
+.ta-booking-wizard-stack .ta-order-table-wrap,
+.ta-booking-wizard-stack .ta-travelers-table-wrap,
+.ta-booking-wizard-stack .ta-order-custpay-table-wrap,
+.ta-booking-wizard-stack .ta-vpay-table-wrap,
+.ta-booking-wizard-stack .ta-order-vendor-grid-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow: visible !important;
+  -webkit-overflow-scrolling: unset;
+}
+
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard,
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard .ta-vcol-fk,
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard .ta-vcol-ref,
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard .ta-vcol-date,
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard .ta-vcol-num,
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard .ta-vcol-pct,
+.ta-booking-wizard-stack--step-4 .ta-order-vendor-line-table.ta-vpay-table--booking-wizard .ta-vcol-mode {
+  min-width: 0 !important;
+}
+
+.ta-booking-wizard-stack .ta-travelers-table--booking-wizard,
+.ta-booking-wizard-stack .ta-custpay-table.ta-custpay-table--booking-wizard,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard,
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard {
+  table-layout: fixed;
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0 !important;
+}
+
+.ta-booking-wizard-stack .ta-travelers-table--booking-wizard th,
+.ta-booking-wizard-stack .ta-travelers-table--booking-wizard td,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard th,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard td,
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard th,
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard td {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0 !important;
+  max-width: none;
+  padding: 0.45rem 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+
+.ta-booking-wizard-stack .ta-travelers-table--booking-wizard thead th,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard thead th,
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard thead th {
+  white-space: normal !important;
+  font-size: 0.72rem;
+  font-weight: 600;
+  vertical-align: bottom;
+  overflow: hidden;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.ta-booking-wizard-stack .ta-wizard-th-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  line-height: 1.1;
+  white-space: normal;
+}
+
+.ta-booking-wizard-stack .ta-wizard-th-lines__line {
+  display: block;
+}
+
+.ta-booking-wizard-stack th.text-end .ta-wizard-th-lines {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-idx {
+  width: 3%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-vendor {
+  width: 9%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-product {
+  width: 11%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-inv-no {
+  width: 6%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-inv-date {
+  width: 7%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-amount {
+  width: 7%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-gst-pct {
+  width: 4.5%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-gst-amt {
+  width: 6.5%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-tds {
+  width: 5.5%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-comm {
+  width: 5%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-net {
+  width: 7%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-due {
+  width: 6.5%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-mode {
+  width: 7.5%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-remarks {
+  width: 9%;
+}
+
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard col.ta-vpay-col-action {
+  width: 4.5%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(1) {
+  width: 3%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(2) {
+  width: 8%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(3) {
+  width: 8%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(4) {
+  width: 10%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(5) {
+  width: 8%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(6) {
+  width: 10%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(7) {
+  width: 8%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(8) {
+  width: 9%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(9) {
+  width: 16%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(10) {
+  width: 8%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard col:nth-child(11) {
+  width: 12%;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard thead th:not(:last-child),
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard tbody td:not(:last-child) {
+  border-right: 0;
+}
+
+.ta-booking-wizard-stack .ta-custpay-col-amount,
+.ta-booking-wizard-stack .ta-custpay-col-amt-received,
+.ta-booking-wizard-stack .ta-custpay-col-balance,
+.ta-booking-wizard-stack .ta-vcol-num,
+.ta-booking-wizard-stack th.text-end.ta-custpay-col-amount,
+.ta-booking-wizard-stack th.text-end.ta-custpay-col-amt-received,
+.ta-booking-wizard-stack th.text-end.ta-custpay-col-balance,
+.ta-booking-wizard-stack th.text-end.ta-vcol-num {
+  text-align: right !important;
+}
+
+.ta-booking-wizard-stack .ta-tcol-actions,
+.ta-booking-wizard-stack .ta-vcol-action,
+.ta-booking-wizard-stack td.ta-tcol-actions,
+.ta-booking-wizard-stack td.ta-vcol-action {
+  white-space: nowrap !important;
+  width: 4.75rem;
+  min-width: 4.75rem !important;
+  max-width: 4.75rem;
+  text-align: right;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard th.ta-tcol-actions,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard td.ta-tcol-actions,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard th.ta-custpay-col-action,
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard td.ta-custpay-col-action {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  white-space: nowrap !important;
+  text-align: right;
+}
+
+.ta-booking-wizard-stack .ta-travelers-table--booking-wizard .ta-tcol-actions {
+  width: 5.25rem;
+  min-width: 5.25rem !important;
+  max-width: 5.25rem;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard .ta-table-actions,
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard .ta-table-actions {
+  flex-wrap: nowrap;
+  gap: 0.2rem;
+}
+
+.ta-booking-wizard-stack .ta-custpay-table--booking-wizard .ta-table-actions .btn-icon,
+.ta-booking-wizard-stack .ta-vpay-table--booking-wizard .ta-table-actions .btn-icon {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
+@media (min-width: 992px) {
+  .ta-order-entry--editor .ta-booking-wizard-stack .ta-order-table-wrap,
+  .ta-order-entry--editor .ta-booking-wizard-stack .ta-order-custpay-table-wrap,
+  .ta-order-entry--editor .ta-booking-wizard-stack .ta-order-vendor-grid-wrap {
+    overflow: visible !important;
+  }
+}
+
 .ta-order-line-table thead th {
   font-size: 0.78rem;
   text-transform: uppercase;
@@ -1799,6 +4137,16 @@ input[type="file"].form-control {
   min-width: 8rem;
 }
 
+/* Native <select> in a wide, horizontally scrollable table: the open list can appear to sit
+   on top of the next row’s controls. Lift the row that contains a focused select so the
+   active dropdown stacks above the row below. */
+.ta-order-vendor-line-table tbody tr {
+  position: relative;
+}
+.ta-order-vendor-line-table tbody tr:has(.form-select:focus) {
+  z-index: 5;
+}
+
 .ta-order-vendor-line-table .ta-vcol-ref {
   min-width: 7rem;
 }
@@ -1809,6 +4157,10 @@ input[type="file"].form-control {
 
 .ta-order-vendor-line-table .ta-vcol-num {
   min-width: 5.25rem;
+}
+
+.ta-order-vendor-line-table thead th.ta-vcol-num {
+  text-align: right;
 }
 
 .ta-order-vendor-line-table .ta-vcol-num .form-control {
@@ -1835,6 +4187,213 @@ input[type="file"].form-control {
   background: var(--bs-light, #f8f9fa);
   border-top: 2px solid var(--bs-border-color, #dee2e6);
   font-variant-numeric: tabular-nums;
+}
+
+/* MIS report page */
+.ta-mis-page__card {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.ta-mis-period-badge {
+  font-weight: 500;
+  font-size: 0.8125rem;
+  background: rgba(var(--bs-primary-rgb), 0.1);
+  color: var(--bs-primary);
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.2) !important;
+}
+
+.ta-mis-filters .form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #495057;
+}
+
+/* Report pages: From + date and To + date on one line; actions on the right */
+.ta-report-date-filters--inline .ta-report-date-filters__pair {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.ta-bookings-filters-bar.ta-report-filters-toolbar .form-control[type="date"] {
+  min-width: 8.75rem;
+  width: auto;
+  max-width: 11rem;
+}
+
+.ta-bookings-filters-bar.ta-report-filters-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ta-bookings-filters-bar.ta-report-filters-toolbar .ta-report-date-filters--inline {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.ta-bookings-filters-bar.ta-report-filters-toolbar .ta-report-filters-toolbar__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Customer ledger: compact customer search before From/To (no visible label; aria-label on input) */
+.ta-report-filters-toolbar__customer {
+  box-sizing: border-box;
+  flex: 0 1 13rem;
+  width: 13rem;
+  max-width: min(13rem, 100%);
+  min-width: 9.5rem;
+}
+
+.ta-mis-kpi {
+  border: 1px solid var(--ta-form-border-subtle);
+  border-radius: 0.65rem;
+  padding: 1.125rem 1.25rem;
+  background: linear-gradient(165deg, rgba(var(--bs-primary-rgb), 0.06) 0%, rgba(255, 255, 255, 0.95) 48%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ta-mis-kpi__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+
+.ta-mis-kpi__value {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--bs-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.ta-mis-kpi__sub {
+  font-size: 0.75rem;
+  color: #868e96;
+}
+
+.ta-mis-section {
+  border: 1px solid var(--ta-form-border-subtle);
+  border-radius: 0.65rem;
+  padding: 1rem 1.15rem 0.85rem;
+  background: #fff;
+}
+
+.ta-mis-section__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6c757d;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(10, 66, 81, 0.12);
+}
+
+.ta-mis-table thead th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6c757d;
+  border-bottom-width: 1px;
+  background: rgba(var(--bs-primary-rgb), 0.04);
+}
+
+.ta-mis-table tbody td {
+  font-size: 0.875rem;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+.ta-mis-table__label {
+  color: #343a40;
+}
+
+.ta-mis-table__value {
+  font-weight: 500;
+  color: #212529;
+  font-variant-numeric: tabular-nums;
+}
+
+.ta-mis-loading {
+  border: 1px dashed var(--ta-form-border-subtle);
+  border-radius: 0.65rem;
+  background: rgba(var(--bs-primary-rgb), 0.03);
+}
+
+/* Reports section shell */
+.ta-reports-layout .page-title-box {
+  margin-bottom: 1.25rem;
+}
+
+.ta-reports-outlet {
+  margin-bottom: 2rem;
+}
+
+.ta-reports-submenu-card {
+  border-radius: 0.75rem;
+  background: linear-gradient(180deg, rgba(var(--bs-primary-rgb), 0.04) 0%, #fff 100%);
+}
+
+.ta-reports-submenu-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ta-reports-nav-pill.btn-light {
+  border: 1px solid var(--ta-form-border-subtle);
+  color: #495057;
+  font-weight: 500;
+}
+
+.ta-reports-nav-pill.btn-light:hover {
+  background: rgba(var(--bs-primary-rgb), 0.08);
+  border-color: rgba(var(--bs-primary-rgb), 0.25);
+  color: var(--bs-primary);
+}
+
+.ta-report-page {
+  margin-bottom: 0.5rem;
+}
+
+.ta-report-date-filters .form-control[type="date"] {
+  min-width: 10.5rem;
+}
+
+.ta-report-table td.ta-mis-table__value {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 575.98px) {
+  .ta-reports-submenu-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .ta-reports-nav-pill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 991.98px) {

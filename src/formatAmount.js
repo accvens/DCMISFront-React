@@ -60,26 +60,38 @@ export function formatAmountInputGrouped(value) {
   }).format(r);
 }
 
+const inrDisplayFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const inrAmountTableFormatter = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 /**
- * Display amounts with Indian digit grouping (en-IN), always two fraction digits, no currency symbol.
+ * Display amounts with Indian digit grouping (en-IN), ₹ symbol, two fraction digits.
  */
 export function formatCurrency(value) {
   const n = Number(stripAmountGrouping(String(value ?? "")));
   const x = Number.isFinite(n) ? n : 0;
-  return new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(x);
+  return inrDisplayFormatter.format(x);
 }
 
-/** Indian grouping with the rupee symbol (for user-facing validation copy). */
-export function formatInrWithRupee(value) {
+/**
+ * Table cell amounts: Indian grouping, two fraction digits, no currency symbol.
+ * Pair with column headers such as "Amount (₹)".
+ */
+export function formatCurrencyAmount(value) {
   const n = Number(stripAmountGrouping(String(value ?? "")));
   const x = Number.isFinite(n) ? n : 0;
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(x);
+  return inrAmountTableFormatter.format(x);
+}
+
+/** Alias for validation copy and labels — same as formatCurrency. */
+export function formatInrWithRupee(value) {
+  return formatCurrency(value);
 }

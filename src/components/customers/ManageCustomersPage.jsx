@@ -14,7 +14,12 @@ import {
   formatDateTime,
   useDebouncedValue,
 } from "../access/AccessShared.jsx";
-import { buildPagedSearchUrl, createEmptyCustomerForm, validateCustomerForm } from "./CustomersShared.jsx";
+import {
+  buildPagedSearchUrl,
+  createEmptyCustomerForm,
+  parseOptionalTenDigitMobile,
+  validateCustomerForm,
+} from "./CustomersShared.jsx";
 
 function ManageCustomersPage({
   token,
@@ -104,13 +109,21 @@ function ManageCustomersPage({
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add customers.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update customers.");
+      return;
+    }
     const validationError = validateCustomerForm(form);
     if (validationError) {
       setFormError(validationError);
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       await apiRequest(form.id ? `/customers/${form.id}` : "/customers", {
@@ -120,7 +133,7 @@ function ManageCustomersPage({
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
           email: form.email.trim() || null,
-          contact_number: form.contact_number.trim() || null,
+          contact_number: parseOptionalTenDigitMobile(form.contact_number),
           gender: form.gender || null,
           address: form.address.trim() || null,
           city: form.city.trim() || null,
@@ -143,6 +156,10 @@ function ManageCustomersPage({
   }
 
   async function handleDelete(customerId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete customers.");
+      return;
+    }
     const id = customerId ?? deleteIdRef.current;
     if (id == null || id === "") {
       return;
@@ -171,7 +188,7 @@ function ManageCustomersPage({
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Manage Customer"
-        subtitle="Create and maintain customer records."
+        subtitle=""
         toolbarExtra={
           <ListSearchInput
             id="customers-list-search"
@@ -316,8 +333,12 @@ function ManageCustomersPage({
             onChange={(value) => setForm((current) => ({ ...current, email: value }))}
           />
           <TextField
-            label="Contact Number"
+            label="Contact number"
             value={form.contact_number}
+            inputMode="numeric"
+            maxLength={15}
+            autoComplete="tel"
+            title="Enter a 10-digit mobile number (optional +91), or leave blank"
             onChange={(value) => setForm((current) => ({ ...current, contact_number: value }))}
           />
           <SelectField

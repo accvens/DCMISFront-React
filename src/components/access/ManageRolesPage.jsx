@@ -16,7 +16,7 @@ import {
   validateNamedSlugForm,
 } from "./AccessShared.jsx";
 
-function ManageRolesPage({ token, apiRequest }) {
+function ManageRolesPage({ token, apiRequest, canWrite = false }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -42,7 +42,7 @@ function ManageRolesPage({ token, apiRequest }) {
 
     Promise.all([
       apiRequest(`/roles?page=${page}&page_size=${pageSize}`, { token }),
-      apiRequest("/permissions?page=1&page_size=100", { token }),
+      apiRequest("/permissions?page=1&page_size=500", { token }),
     ])
       .then(([rolesResponse, permissionsResponse]) => {
         if (!active) return;
@@ -64,6 +64,10 @@ function ManageRolesPage({ token, apiRequest }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    if (!canWrite) {
+      setFormError("You do not have permission to manage roles.");
+      return;
+    }
     const validationError = validateNamedSlugForm(form.role_name, form.slug, "Role");
     if (validationError) {
       setFormError(validationError);
@@ -123,6 +127,10 @@ function ManageRolesPage({ token, apiRequest }) {
   }
 
   async function handleDelete(roleId) {
+    if (!canWrite) {
+      setError("You do not have permission to delete roles.");
+      return;
+    }
     try {
       await apiRequest(`/roles/${roleId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -172,13 +180,17 @@ function ManageRolesPage({ token, apiRequest }) {
       <ManageCard
         title="Manage Role"
         subtitle="Create or update application roles."
-        actionLabel="Add Role"
-        onAction={() => {
-          setForm(createEmptyRoleForm());
-          setFormError("");
-          setError("");
-          setModalOpen(true);
-        }}
+        actionLabel={canWrite ? "Add Role" : undefined}
+        onAction={
+          canWrite
+            ? () => {
+                setForm(createEmptyRoleForm());
+                setFormError("");
+                setError("");
+                setModalOpen(true);
+              }
+            : undefined
+        }
       >
         {loading ? (
           <CardLoader message="Loading roles..." />
@@ -192,45 +204,51 @@ function ManageRolesPage({ token, apiRequest }) {
                 item.slug,
                 formatDateTime(item.created_at),
                 <div key={`role-actions-${item.id}`} className="ta-table-actions">
-                  <button
-                    type="button"
-                    className="btn btn-icon btn-soft-primary btn-sm"
-                    aria-label="Edit role"
-                    onClick={() => {
-                      setForm({
-                        id: String(item.id),
-                        role_name: item.role_name,
-                        slug: item.slug,
-                        permission_ids: (item.permissions || []).map((p) => Number(p.id)),
-                      });
-                      setFormError("");
-                      setError("");
-                      setModalOpen(true);
-                    }}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
-                      <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
-                      <path d="M2 13.5h12" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-icon btn-soft-danger btn-sm"
-                    aria-label="Delete role"
-                    onClick={() =>
-                      setDeleteTarget({
-                        id: item.id,
-                        label: item.role_name,
-                      })
-                    }
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
-                      <path d="M3 4h10" />
-                      <path d="M6 4V3h4v1" />
-                      <path d="M5 4v8M11 4v8" />
-                      <rect x="4" y="4" width="8" height="9" rx="1" />
-                    </svg>
-                  </button>
+                  {canWrite ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-icon btn-soft-primary btn-sm"
+                        aria-label="Edit role"
+                        onClick={() => {
+                          setForm({
+                            id: String(item.id),
+                            role_name: item.role_name,
+                            slug: item.slug,
+                            permission_ids: (item.permissions || []).map((p) => Number(p.id)),
+                          });
+                          setFormError("");
+                          setError("");
+                          setModalOpen(true);
+                        }}
+                      >
+                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
+                          <path d="M3 11.5 3.5 9l6-6 2.5 2.5-6 6L3 11.5z" />
+                          <path d="M2 13.5h12" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-icon btn-soft-danger btn-sm"
+                        aria-label="Delete role"
+                        onClick={() =>
+                          setDeleteTarget({
+                            id: item.id,
+                            label: item.role_name,
+                          })
+                        }
+                      >
+                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ta-action-icon">
+                          <path d="M3 4h10" />
+                          <path d="M6 4V3h4v1" />
+                          <path d="M5 4v8M11 4v8" />
+                          <rect x="4" y="4" width="8" height="9" rx="1" />
+                        </svg>
+                      </button>
+                    </>
+                  ) : (
+                    "-"
+                  )}
                 </div>,
               ])}
               sortable

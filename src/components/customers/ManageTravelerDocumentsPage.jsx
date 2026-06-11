@@ -19,31 +19,10 @@ import {
   CustomerAutocomplete,
   TravelerAutocomplete,
 } from "./CustomersShared.jsx";
+import { resolveUploadedAssetHref } from "../../apiOrigin.js";
 
-const TRAVELER_DOC_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,application/pdf";
-
-function documentAssetHref(filePath) {
-  if (!filePath) {
-    return "";
-  }
-  if (/^https?:\/\//i.test(filePath)) {
-    return filePath;
-  }
-  const path = filePath.startsWith("/") ? filePath : `/${filePath}`;
-  if (import.meta.env.DEV) {
-    return path;
-  }
-  const envBase = import.meta.env.VITE_API_BASE_URL;
-  if (envBase && /^https?:\/\//i.test(envBase)) {
-    try {
-      const origin = new URL(String(envBase).replace(/\/+$/, "")).origin;
-      return `${origin}${path}`;
-    } catch {
-      /* fall through */
-    }
-  }
-  return `http://127.0.0.1:8000${path}`;
-}
+const TRAVELER_DOC_ACCEPT = ".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png";
+const TRAVELER_DOC_MAX_BYTES = 2 * 1024 * 1024;
 
 function documentFileBasename(filePath) {
   if (!filePath) {
@@ -77,6 +56,23 @@ function createEmptyDocumentForm() {
   };
 }
 
+function validateTravelerDocumentFile(file) {
+  if (!file || !(file instanceof File)) {
+    return "";
+  }
+  if (!/\.(pdf|jpe?g|png)$/i.test(String(file.name || ""))) {
+    return "Only PDF, JPG, and PNG files are allowed.";
+  }
+  const mime = String(file.type || "").toLowerCase();
+  if (mime && mime !== "application/pdf" && mime !== "image/jpeg" && mime !== "image/png") {
+    return "Only PDF, JPG, and PNG files are allowed.";
+  }
+  if (file.size > TRAVELER_DOC_MAX_BYTES) {
+    return "File must be 2 MB or smaller.";
+  }
+  return "";
+}
+
 function validateDocumentForm(form, isEditing) {
   if (!String(form.customer_id || "").trim()) {
     return "Customer is required.";
@@ -92,6 +88,12 @@ function validateDocumentForm(form, isEditing) {
   }
   if (isEditing && !form.file && !String(form.existingFilePath || "").trim()) {
     return "Choose a new file or keep the existing document.";
+  }
+  if (form.file) {
+    const fileErr = validateTravelerDocumentFile(form.file);
+    if (fileErr) {
+      return fileErr;
+    }
   }
   return "";
 }
@@ -112,6 +114,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
   const [modalOpen, setModalOpen] = useState(false);
   const [uploadFieldKey, setUploadFieldKey] = useState(0);
   const [successModal, setSuccessModal] = useState(null);
+  const [customerFilterId, setCustomerFilterId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
 
@@ -121,7 +124,14 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
 
   useEffect(() => {
     setPage(1);
-  }, [searchInput]);
+  }, [searchInput, customerFilterId]);
+
+  function buildListUrl() {
+    const base = buildPagedSearchUrl("/traveler-documents", page, pageSize, debouncedSearch);
+    const cid = String(customerFilterId || "").trim();
+    if (!cid) return base;
+    return `${base}&customer_id=${encodeURIComponent(cid)}`;
+  }
 
   useEffect(() => {
     let active = true;
@@ -129,9 +139,14 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
     setError("");
 
     Promise.all([
-      apiRequest(buildPagedSearchUrl("/traveler-documents", page, pageSize, debouncedSearch), { token }),
+      apiRequest(buildListUrl(), { token }),
       // Backend pagination validates page_size <= 500; travelers include customer names for the list
-      apiRequest("/travelers?page=1&page_size=100", { token }),
+      apiRequest(
+        String(customerFilterId || "").trim()
+          ? `/travelers?page=1&page_size=100&customer_id=${encodeURIComponent(String(customerFilterId).trim())}`
+          : "/travelers?page=1&page_size=100",
+        { token },
+      ),
       apiRequest("/traveler-document-types", { token }),
     ])
       .then(([docsResponse, travelersResponse, typesResponse]) => {
@@ -150,7 +165,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
     return () => {
       active = false;
     };
-  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token]);
+  }, [apiRequest, page, pageSize, debouncedSearch, refreshKey, token, customerFilterId]);
 
   const documentTypeOptions = useMemo(
     () =>
@@ -188,13 +203,21 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+    const isEditing = Boolean(form.id);
+    if (!isEditing && !canCreate) {
+      setFormError("You do not have permission to add traveler documents.");
+      return;
+    }
+    if (isEditing && !canUpdate) {
+      setFormError("You do not have permission to update traveler documents.");
+      return;
+    }
     const validationError = validateDocumentForm(form, Boolean(form.id));
     if (validationError) {
       setFormError(validationError);
       return;
     }
     setSaving(true);
-    const isEditing = Boolean(form.id);
 
     try {
       const formData = new FormData();
@@ -225,6 +248,10 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
   }
 
   async function handleDelete(documentId) {
+    if (!canDelete) {
+      setError("You do not have permission to delete traveler documents.");
+      return;
+    }
     try {
       await apiRequest(`/traveler-documents/${documentId}`, { method: "DELETE", token });
       setDeleteTarget(null);
@@ -242,30 +269,53 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
       <AlertMessage message={error} variant="danger" />
       <ManageCard
         title="Traveler Documents"
-        subtitle="Select a customer, then a traveler, and upload a document (PDF, images, Word)."
+        subtitle=""
         toolbarExtra={
-          <ListSearchInput
-            id="traveler-documents-list-search"
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder="Search traveler, customer, document type, file..."
-          />
-        }
-        actionLabel={canCreate ? "Add Traveler Document" : undefined}
-        onAction={
-          canCreate
-            ? () => {
-                setUploadFieldKey((k) => k + 1);
-                setForm({
-                  ...createEmptyDocumentForm(),
-                  document_type_id: documentTypeOptions[0]?.value || "",
-                  file: null,
-                  existingFilePath: "",
-                });
-                setFormError("");
-                setModalOpen(true);
-              }
-            : undefined
+          <div className="ta-travelers-toolbar">
+            <CustomerAutocomplete
+              value={customerFilterId}
+              onChange={setCustomerFilterId}
+              customers={[]}
+              apiRequest={apiRequest}
+              token={token}
+              required={false}
+              wrapperClassName="ta-travelers-toolbar__customer"
+              inputClassName="form-control form-control-sm"
+            />
+            <div className="ta-travelers-toolbar__search">
+              <ListSearchInput
+                id="traveler-documents-list-search"
+                value={searchInput}
+                onChange={setSearchInput}
+                placeholder="Search traveler, customer, document type, file..."
+              />
+            </div>
+            {String(customerFilterId || "").trim() ? (
+              <button type="button" className="btn btn-sm btn-light" onClick={() => setCustomerFilterId("")}>
+                Clear
+              </button>
+            ) : null}
+            {canCreate ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setUploadFieldKey((k) => k + 1);
+                  setForm({
+                    ...createEmptyDocumentForm(),
+                    customer_id: String(customerFilterId || "").trim(),
+                    document_type_id: documentTypeOptions[0]?.value || "",
+                    file: null,
+                    existingFilePath: "",
+                  });
+                  setFormError("");
+                  setModalOpen(true);
+                }}
+              >
+                Add Traveler Document
+              </button>
+            ) : null}
+          </div>
         }
       >
         {loading ? (
@@ -285,7 +335,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
                     className="d-flex flex-wrap gap-2 align-items-center"
                   >
                     <a
-                      href={documentAssetHref(item.file_path)}
+                      href={resolveUploadedAssetHref(item.file_path)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-break"
@@ -296,7 +346,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
                       |
                     </span>
                     <a
-                      href={documentAssetHref(item.file_path)}
+                      href={resolveUploadedAssetHref(item.file_path)}
                       download={documentDownloadFilename(item)}
                       className="text-break"
                     >
@@ -402,7 +452,6 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
         <AlertMessage message={formError} variant="danger" />
         <div className="row g-3">
           <CustomerAutocomplete
-            label="Customer"
             value={form.customer_id}
             required
             onChange={(value) =>
@@ -415,9 +464,6 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
             apiRequest={apiRequest}
             token={token}
           />
-          <p className="col-12 small text-muted mb-0">
-            Select a customer first, then choose the traveler this document belongs to.
-          </p>
           <TravelerAutocomplete
             label="Traveler"
             value={form.traveler_id}
@@ -428,21 +474,17 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
             onChange={(value) => setForm((current) => ({ ...current, traveler_id: value }))}
             apiRequest={apiRequest}
             token={token}
+            wrapperClassName="col-12 col-md-6"
           />
-          <AutocompleteField
-            label="Document Type"
-            value={form.document_type_id}
-            required
-            placeholder="Type to search document types…"
-            onChange={(value) => setForm((current) => ({ ...current, document_type_id: value }))}
-            options={documentTypeOptions}
-          />
+          <p className="col-12 small text-muted mb-0">
+            Select a customer first, then choose the traveler this document belongs to.
+          </p>
           {form.id && form.existingFilePath ? (
-            <div className="col-12 col-md-6">
+            <div className="col-12">
               <label className="form-label">Current file</label>
               <div className="d-flex flex-wrap align-items-center gap-2">
                 <a
-                  href={documentAssetHref(form.existingFilePath)}
+                  href={resolveUploadedAssetHref(form.existingFilePath)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-sm btn-outline-primary"
@@ -450,7 +492,7 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
                   Open
                 </a>
                 <a
-                  href={documentAssetHref(form.existingFilePath)}
+                  href={resolveUploadedAssetHref(form.existingFilePath)}
                   download={documentDownloadFilename({
                     id: form.id,
                     document_type:
@@ -466,6 +508,15 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
               </div>
             </div>
           ) : null}
+          <AutocompleteField
+            label="Document Type"
+            value={form.document_type_id}
+            required
+            placeholder="Type to search document types…"
+            onChange={(value) => setForm((current) => ({ ...current, document_type_id: value }))}
+            options={documentTypeOptions}
+            wrapperClassName="col-12 col-md-6"
+          />
           <FileField
             label={form.id ? "Replace file" : "Document file"}
             accept={TRAVELER_DOC_ACCEPT}
@@ -473,6 +524,9 @@ function ManageTravelerDocumentsPage({ token, apiRequest, canCreate, canUpdate, 
             inputKey={`doc-upload-${uploadFieldKey}`}
             onChange={(file) => setForm((current) => ({ ...current, file }))}
           />
+          <p className="col-12 small text-muted mb-0">
+            Allowed file types: PDF, JPG, and PNG only. Maximum size: 2 MB.
+          </p>
         </div>
       </FormModal>
 
